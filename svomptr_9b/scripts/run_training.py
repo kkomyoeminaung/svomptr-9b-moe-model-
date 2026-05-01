@@ -35,31 +35,27 @@ def run():
     builder.build()
     
     # 2. Setup Loaders
-    tokenizer = AutoTokenizer.from_pretrained("gpt2") # Use any standard tokenizer for testing
+    tokenizer = AutoTokenizer.from_pretrained("gpt2") 
     phase1_data = os.path.join(processed_dir, "phase1.jsonl")
     
+    train_loader = []
     if os.path.exists(phase1_data):
         print(f"📊 Loading Phase 1 data from {phase1_data}")
         train_ds = SVOMPTRDataset(phase1_data, tokenizer)
-        train_loader = DataLoader(train_ds, batch_size=config.batch_size if hasattr(config, 'batch_size') else 4, shuffle=True)
+        if len(train_ds) > 0:
+            train_loader = DataLoader(train_ds, batch_size=config.batch_size if hasattr(config, 'batch_size') else 4, shuffle=True)
+            print(f"✅ Loaded {len(train_ds)} samples for Phase 1.")
+        else:
+            print(f"⚠️ Warning: {phase1_data} is empty.")
     else:
         print(f"⚠️ Warning: {phase1_data} not found. Ensure raw data exists.")
-        train_loader = []
     
-    val_loader = [] # Placeholder
+    val_loader = [] 
     
     # 3. Run Phases
     phases = [
         ("1", Phase1SlotTrainer, "Phase 1: Slot Logic & Grammar Patterns"),
-        # ("2", Phase2MLMTrainer, "Phase 2: Bilingual Masked Modeling"), # Future
-        # ("3", Phase3CausalTrainer, "Phase 3: Domain Pretraining"), # Future
-        # ("4", Phase4ConversationTrainer, "Phase 4: Bilingual SFT + CoT"), # Future
     ]
-
-    # Real loaders should be initialized here
-    # train_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
-    train_loader = [] # Placeholder
-    val_loader = [] # Placeholder
 
     for phase_id, trainer_class, desc in phases:
         if args.phase in [phase_id, "all"]:
@@ -71,22 +67,38 @@ def run():
             os.makedirs(checkpoint_dir, exist_ok=True)
             
             latest_checkpoint = os.path.join(checkpoint_dir, "latest.pt")
+            start_epoch = 0
             
             if args.resume and os.path.exists(latest_checkpoint):
                 print(f"♻️  Resuming from {latest_checkpoint}...")
-                model.load_state_dict(torch.load(latest_checkpoint)['model_state_dict'])
+                checkpoint = torch.load(latest_checkpoint, map_location=device)
+                model.load_state_dict(checkpoint['model_state_dict'])
+                start_epoch = checkpoint.get('epoch', 0)
+                print(f"📈 Resuming from Epoch {start_epoch + 1}")
 
             trainer = trainer_class(model, train_loader, val_loader, config)
+            if args.resume and os.path.exists(latest_checkpoint):
+                # Optionally restore optimizer state
+                try:
+                    trainer.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                except: pass
             
             epochs = config.num_epochs if hasattr(config, 'num_epochs') else 3
-            for epoch in range(epochs):
+            for epoch in range(start_epoch, epochs):
                 print(f"\n📅 Epoch {epoch+1}/{epochs}")
                 trainer.train_epoch()
                 
                 # Save epoch checkpoint
                 epoch_path = os.path.join(checkpoint_dir, f"epoch_{epoch+1}.pt")
                 trainer.save_checkpoint(epoch_path)
-                trainer.save_checkpoint(latest_checkpoint) # Always update latest
+                
+                # Save with metadata for resume
+                torch.save({
+                    'epoch': epoch + 1,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': trainer.optimizer.state_dict(),
+                }, latest_checkpoint)
+                print(f"💾 Checkpoint updated at {latest_checkpoint}")
                 
                 # trainer.validate()
         

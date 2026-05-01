@@ -1,5 +1,6 @@
 # svomptr/ingestion/auto_learner.py
 from duckduckgo_search import DDGS
+from tqdm import tqdm
 from .loaders import FileLoader
 from ..memory.long_term import LongTermMemory
 import os
@@ -48,7 +49,9 @@ class AutoLearner:
     def learn_all(self):
         """Sequential learning with resume support."""
         print(f"🚀 Starting Auto-Learning sequence for {len(self.subjects)} subjects.")
-        for subject in self.subjects:
+        pbar = tqdm(self.subjects, desc="Learning Progress")
+        for subject in pbar:
+            pbar.set_postfix({"subject": subject})
             self.learn_from_subject(subject)
         print("🎉 All subjects processed.")
 

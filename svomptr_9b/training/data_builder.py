@@ -52,6 +52,15 @@ class DataBuilder:
     def build(self):
         print("🚀 Building Enhanced 4-phase training dataset...")
         
+        # Check if data already exists to avoid redundant building
+        checkpoint_file = self.output_dir / ".builder_progress"
+        if os.path.exists(checkpoint_file):
+            print("🔄 Previous build progress found. Checking files...")
+            files = ["phase1.jsonl", "phase2.jsonl", "phase3.jsonl", "phase4.jsonl"]
+            if all((self.output_dir / f).exists() for f in files):
+                print("✅ All dataset files already exist. Skipping build.")
+                return
+
         # Add special cases for grammar logic
         self.add_virtual_subject_training_data()
         
@@ -69,6 +78,10 @@ class DataBuilder:
         # Phase 4: Conversation (Bilingual SFT + CoT)
         self._write_jsonl("phase4.jsonl", self.raw_data.get("chat_data", []))
         
+        # Mark as finished
+        with open(checkpoint_file, "w") as f:
+            f.write("finished")
+            
         print(f"✅ Data built in {self.output_dir}. Total Samples: {len(self.raw_data.get('chat_data', []))}")
 
     def _write_jsonl(self, filename, data):
@@ -77,6 +90,6 @@ class DataBuilder:
             return
         path = self.output_dir / filename
         with open(path, "w", encoding="utf-8") as f:
-            for item in data:
+            for item in tqdm(data, desc=f"Writing {filename}"):
                 f.write(json.dumps(item, ensure_ascii=False) + "\n")
-        print(f"📝 Created {filename} with {len(data)} samples.")
+        print(f"✅ Created {filename} with {len(data)} samples.")

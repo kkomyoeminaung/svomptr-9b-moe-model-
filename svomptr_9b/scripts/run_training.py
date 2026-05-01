@@ -36,25 +36,46 @@ def run():
     # 2. Run Phases
     phases = [
         ("1", Phase1SlotTrainer, "Phase 1: Slot Logic & Grammar Patterns"),
+        # ("2", Phase2MLMTrainer, "Phase 2: Bilingual Masked Modeling"), # Future
+        # ("3", Phase3CausalTrainer, "Phase 3: Domain Pretraining"), # Future
+        # ("4", Phase4ConversationTrainer, "Phase 4: Bilingual SFT + CoT"), # Future
     ]
 
-    # Mock loaders for now, replace with real ones when implemented
-    train_loader = [] 
-    val_loader = []
+    # Real loaders should be initialized here
+    # train_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
+    train_loader = [] # Placeholder
+    val_loader = [] # Placeholder
 
     for phase_id, trainer_class, desc in phases:
         if args.phase in [phase_id, "all"]:
-            print(f"\n--- {desc} ---")
-            checkpoint_path = f"data/checkpoints/phase_{phase_id}_final.pt"
+            print(f"\n{'='*20}")
+            print(f"🚀 Starting {desc}")
+            print(f"{'='*20}")
             
-            if args.resume and os.path.exists(checkpoint_path):
-                print(f"Resuming from {checkpoint_path}...")
-                model.load_state_dict(torch.load(checkpoint_path)['model_state_dict'])
+            checkpoint_dir = f"data/checkpoints/phase_{phase_id}"
+            os.makedirs(checkpoint_dir, exist_ok=True)
+            
+            latest_checkpoint = os.path.join(checkpoint_dir, "latest.pt")
+            
+            if args.resume and os.path.exists(latest_checkpoint):
+                print(f"♻️  Resuming from {latest_checkpoint}...")
+                model.load_state_dict(torch.load(latest_checkpoint)['model_state_dict'])
 
             trainer = trainer_class(model, train_loader, val_loader, config)
-            # trainer.train_epoch() 
+            
+            epochs = config.num_epochs if hasattr(config, 'num_epochs') else 3
+            for epoch in range(epochs):
+                print(f"\n📅 Epoch {epoch+1}/{epochs}")
+                trainer.train_epoch()
+                
+                # Save epoch checkpoint
+                epoch_path = os.path.join(checkpoint_dir, f"epoch_{epoch+1}.pt")
+                trainer.save_checkpoint(epoch_path)
+                trainer.save_checkpoint(latest_checkpoint) # Always update latest
+                
+                # trainer.validate()
         
-    print("🚀 Pipeline Finished!")
+    print("\n✅ All Training Phases Completed Successfully. Pipeline Finished!")
 
 if __name__ == "__main__":
     run()

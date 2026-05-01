@@ -16,30 +16,47 @@ class GrammarDistiller:
         
     def generate_prompt_for_llm(self, component_name: str, count: int = 10) -> str:
         """
-        LLM (Qwen/Gemma) အတွက် Grammar-specific prompt ထုတ်ပေးခြင်း
+        Enhances the distillation prompt with strict formatting and Burmese nuance instructions.
         """
         rules = self._get_rules_by_component(component_name)
         
         prompt = f"""
-        Role: Expert English Teacher and Linguist
-        Task: Generate {count} natural English sentences focusing on the grammar component: "{component_name}".
+        Role: Senior Linguistics Expert (English-Myanmar Specialist)
+        Task: Generate {count} diverse sentences focusing on the grammar component: "{component_name}".
         
         Grammar Rules/Reference:
         {json.dumps(rules, indent=2, ensure_ascii=False)}
         
-        Guidelines:
-        1. Make sentences sound like real conversation or high-quality literature.
-        2. Vary the length and complexity.
-        3. Include Myanmar translations if possible.
-        4. Output format: A JSON list of objects with "en" and "my" keys.
-        
-        Example Output:
+        Requirements:
+        1. Context: Real-world conversation, academic, or professional usage.
+        2. Bilingual: Provide the English sentence and its natural Myanmar (Burmese) translation.
+        3. Burmese Nuances: Use correct particles (e.g., -တယ်, -နေတယ်, -ခဲ့တယ်) and honorifics where appropriate.
+        4. No explanation: Just the JSON data.
+        5. Format: Return ONLY a valid JSON list of objects:
         [
-          {{"en": "Sentence 1", "my": "ဘာသာပြန် ၁"}},
-          {{"en": "Sentence 2", "my": "ဘာသာပြန် ၂"}}
+          {{"en": "...", "my": "...", "sentence": "...", "component": "{component_name}"}},
+          ...
         ]
         """
         return prompt
+
+    def generate_mock_data(self, component: str):
+        """Generates realistic mock data for testing distillation pipeline without an external LLM."""
+        mocks = {
+            "tense": [
+                {"en": "I go to school every day.", "my": "ကျွန်တော် နေ့တိုင်း ကျောင်းသွားတယ်။"},
+                {"en": "She is reading a book now.", "my": "သူမ အခု စာအုပ်ဖတ်နေတယ်။"},
+                {"en": "They have finished their work.", "my": "သူတို့ သူတို့ရဲ့ အလုပ်ကို ပြီးစီးခဲ့ပြီ။"}
+            ],
+            "myanmar_particles": [
+                {"en": "Did you eat?", "my": "မင်း စားပြီးပြီလား။"},
+                {"en": "I want to eat.", "my": "ကျွန်တော် စားချင်တယ်။"},
+                {"en": "Please come here.", "my": "ဒီကို လာခဲ့ပါ။"}
+            ]
+        }
+        # Default fallback
+        default = [{"en": f"Sample for {component}", "my": f"{component} အတွက် နမူနာ"}]
+        return mocks.get(component, default)
 
     def _get_rules_by_component(self, component: str) -> Dict:
         """Parser ထဲက rules တွေကို ဆွဲထုတ်ခြင်း"""
@@ -78,7 +95,7 @@ class GrammarDistiller:
              
         return {"info": "Explore various patterns for " + component}
 
-    def process_distilled_data(self, llm_json_response: str):
+    def process_distilled_data(self, llm_json_response: str, memory_save=False):
         """
         LLM က ပြန်ပေးလိုက်တဲ့ raw sentences တွေကို SVOMPTR tokens အဖြစ်ပြောင်းပြီး 
         training ready data အဖြစ် သိမ်းဆည်းခြင်း။
@@ -114,10 +131,29 @@ class GrammarDistiller:
                 }
                 processed_samples.append(sample)
                 
+                # Save to Long Term Memory for RAG and Dreaming
+                if memory_save:
+                    from ..memory.long_term import LongTermMemory
+                    mem = LongTermMemory()
+                    mem.store_memory(
+                        sentence, 
+                        f"SVOMPTR: {json.dumps(sample['target'])} | MM: {sample['myanmar']}"
+                    )
+                
             return processed_samples
         except Exception as e:
             print(f"Error processing data: {e}")
             return []
+
+    def export_dataset(self, samples: List[Dict], filename: str = "distilled_finetuning.jsonl"):
+        """Save processed samples to a JSONL file for training."""
+        import os
+        os.makedirs("data/distilled", exist_ok=True)
+        path = os.path.join("data/distilled", filename)
+        with open(path, "a", encoding="utf-8") as f:
+            for s in samples:
+                f.write(json.dumps(s, ensure_ascii=False) + "\n")
+        print(f"✅ Exported {len(samples)} samples to {path}")
 
     def _result_to_dict(self, result) -> Dict:
         """Convert parse result dataclass to dict safe for JSON - Comprehensive Upgrade"""

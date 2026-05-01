@@ -45,6 +45,20 @@ class AutoLearner:
         with open(self.progress_file, 'w') as f:
             json.dump(prog, f)
 
+    def learn_all(self):
+        """Sequential learning with resume support."""
+        print(f"🚀 Starting Auto-Learning sequence for {len(self.subjects)} subjects.")
+        for subject in self.subjects:
+            self.learn_from_subject(subject)
+        print("🎉 All subjects processed.")
+
+    def add_subject(self, subject: str):
+        """Dynamically add a new subject to the queue."""
+        if subject not in self.subjects:
+            self.subjects.append(subject)
+            self.save_subjects(self.subjects)
+            print(f"➕ Added subject: {subject}")
+
     def learn_from_subject(self, subject):
         prog = self._load_progress()
         if subject in prog["completed"]:

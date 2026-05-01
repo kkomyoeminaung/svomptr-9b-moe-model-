@@ -4,15 +4,13 @@ import os
 import json
 from .grammar_distiller import GrammarDistiller
 
-def run_distillation_pipeline(output_file="distilled_dataset.jsonl"):
+def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=False):
     """
     Main pipeline to orchestrate knowledge distillation.
-    In a real scenario, this would connect to an LLM API.
+    dry_run=True: Uses mock data to simulate end-to-end processing.
     """
     distiller = GrammarDistiller()
     
-    # Bug #13 Fix: Updated list to match "36 components" (approx) 
-    # Adding more granular categories for comprehensive coverage
     components = [
         "tense", "voice", "conditional", "reported_speech", 
         "conjunctions", "negation", "causative", "ellipsis", 
@@ -26,42 +24,43 @@ def run_distillation_pipeline(output_file="distilled_dataset.jsonl"):
         "gerunds", "infinitives", "participles"
     ]
     
-    # Ensure directory for output exists
     output_dir = os.path.dirname(output_file)
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
     
-    print(f"Starting SVOMPTR Knowledge Distillation Pipeline...")
+    print(f"🚀 SVOMPTR Knowledge Distillation Pipeline {'(DRY RUN)' if dry_run else ''}")
     print(f"Target Components: {len(components)}")
     
-    results_summary = []
+    all_processed_samples = []
 
-    # Note: In this environment, we don't have direct LLM API access here,
-    # so we provide the prompt generation logic and the processing logic.
-    # The user can run this in Colab using Gemini/Ollama.
-    
     for comp in components:
-        prompt = distiller.generate_prompt_for_llm(comp)
-        results_summary.append({
-            "component": comp,
-            "status": "ready_for_llm",
-            "prompt_length": len(prompt)
-        })
-        print(f"Generated prompt for: {comp}")
+        if dry_run:
+            mock_data = distiller.generate_mock_data(comp)
+            mock_json = json.dumps(mock_data)
+            samples = distiller.process_distilled_data(mock_json, memory_save=True)
+            all_processed_samples.extend(samples)
+            print(f"✅ Processed {len(samples)} mock samples for: {comp}")
+        else:
+            prompt = distiller.generate_prompt_for_llm(comp)
+            print(f"📝 Prompt generated for: {comp}")
 
-    # Create a metadata file explaining how to use these prompts
-    metadata = {
-        "project": "SVOMPTR-9B",
-        "version": "1.0-upgrade",
-        "instructions": "Use the generated prompts in gems.google.com or Ollama to generate JSON data, then feed back to process_distilled_data.",
-        "components_covered": components
-    }
+    if dry_run:
+         distiller.export_dataset(all_processed_samples, output_file)
+         print(f"🎉 Dry run complete. {len(all_processed_samples)} samples saved to {output_file}")
+    else:
+        # Create a metadata file explaining how to use these prompts
+        metadata = {
+            "project": "SVOMPTR-9B",
+            "version": "1.0-upgrade",
+            "instructions": "Use the generated prompts in gems.google.com or Ollama to generate JSON data.",
+            "components_covered": components
+        }
+        with open("distillation_metadata.json", "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2)
+        print(f"📂 Pipeline initialized. Metadata saved to distillation_metadata.json")
     
-    with open("distillation_metadata.json", "w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=2)
-
-    print(f"Pipeline initialized. Metadata saved to distillation_metadata.json")
-    return results_summary
+    return all_processed_samples
 
 if __name__ == "__main__":
-    run_distillation_pipeline()
+    # Logical check: Run in dry_run mode by default for verification
+    run_distillation_pipeline(dry_run=True)

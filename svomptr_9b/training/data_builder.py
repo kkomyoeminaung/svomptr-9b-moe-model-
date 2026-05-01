@@ -1,4 +1,4 @@
-# svomptr_9b/training/data_builder.py
+# /svomptr_9b/training/data_builder.py
 
 import json
 import os
@@ -9,23 +9,45 @@ from tqdm import tqdm
 class DataBuilder:
     """Builds 4-phase training data with high-quality bilingual reasoning (CoT) pairs"""
     def __init__(self, raw_data_path: str, output_dir: str):
-        with open(raw_data_path, 'r', encoding='utf-8') as f:
-            self.raw_data = json.load(f) # Expected to have CoT & Bilingual data
+        if os.path.exists(raw_data_path):
+            with open(raw_data_path, 'r', encoding='utf-8') as f:
+                self.raw_data = json.load(f)
+        else:
+            self.raw_data = {
+                "slot_data": [],
+                "unlabeled_data": [],
+                "causal_data": [],
+                "chat_data": []
+            }
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
     def add_virtual_subject_training_data(self):
-        """
-        Supports 'Hidden Subject' logic (Pro-drop) where Burmese sentences omit 'I' or 'It'.
-        """
-        print("💡 Adding Virtual Subject (Pro-drop) logic samples...")
-        special_samples = [
+        """Add critical training examples for virtual subjects, pro-drop, and advanced SVOMPTR rules"""
+        print("💡 Adding Virtual Subject and Advanced Syntax logic samples...")
+        
+        virtual_examples = [
             {"en": "I am eating.", "my": "စားနေတယ်။", "svomptr": "S(hidden):I, V:eating"},
-            {"en": "It is raining.", "my": "မိုးရွာနေတယ်။", "svomptr": "S(hidden):It, V:raining"}
+            {"en": "It is raining.", "my": "မိုးရွာနေတယ်။", "svomptr": "S(hidden):It, V:raining"},
+            {
+                "instruction": "Parse: There is a cat",
+                "input": "",
+                "output": "S:<VIRTUAL_EXISTENTIAL> V:is O:a cat\nInterpretation: Introducing new subject 'cat'"
+            },
+            {
+                "instruction": "Parse: Sit down",
+                "input": "",
+                "output": "S:You(implied) V:sit M:down\nInterpretation: Command with implied subject"
+            }
         ]
-        if 'grammar_data' not in self.raw_data:
-            self.raw_data['grammar_data'] = []
-        self.raw_data['grammar_data'].extend(special_samples)
+        
+        if "chat_data" not in self.raw_data: self.raw_data["chat_data"] = []
+        self.raw_data["chat_data"].extend(virtual_examples)
+        
+        if "slot_data" not in self.raw_data: self.raw_data["slot_data"] = []
+        for ex in virtual_examples:
+            if "svomptr" in ex:
+                self.raw_data["slot_data"].append({"input": ex["en"], "target": ex["svomptr"]})
 
     def build(self):
         print("🚀 Building Enhanced 4-phase training dataset...")
@@ -33,179 +55,28 @@ class DataBuilder:
         # Add special cases for grammar logic
         self.add_virtual_subject_training_data()
         
+        os.makedirs(self.output_dir, exist_ok=True)
+        
         # Phase 1: Slot Prediction
-        self._build_phase1()
+        self._write_jsonl("phase1.jsonl", self.raw_data.get("slot_data", []))
         
         # Phase 2: MLM (Language Pretraining)
-        self._build_phase2()
+        self._write_jsonl("phase2.jsonl", self.raw_data.get("unlabeled_data", []))
         
         # Phase 3: Causal (Reasoning + Bilingual Contrastive)
-        self._build_phase3()
+        self._write_jsonl("phase3.jsonl", self.raw_data.get("causal_data", []))
         
         # Phase 4: Conversation (Bilingual SFT + CoT)
-        self._build_phase4()
+        self._write_jsonl("phase4.jsonl", self.raw_data.get("chat_data", []))
         
-        print(f"✅ Data built in {self.output_dir}. Total Chat Samples: {len(self.raw_data.get('chat_data', []))}")
+        print(f"✅ Data built in {self.output_dir}. Total Samples: {len(self.raw_data.get('chat_data', []))}")
 
-    def _build_phase1(self):
-        print("Building Phase 1 (Slot Prediction)...")
-        with open(self.output_dir / "phase1.jsonl", "w") as f:
-            for item in tqdm(self.raw_data["slot_data"]):
-                f.write(json.dumps(item) + "\n")
-                
-    def _build_phase2(self):
-        print("Building Phase 2 (Multilingual Masked LM)...")
-        with open(self.output_dir / "phase2.jsonl", "w") as f:
-            for item in tqdm(self.raw_data["unlabeled_data"]):
-                # Ensure balance of Myanmar/English here if raw_data is mixed
-                f.write(json.dumps(item) + "\n")
-
-    def _build_phase3(self):
-        print("Building Phase 3 (Bilingual Causal Reasoning Data)...")
-        with open(self.output_dir / "phase3.jsonl", "w") as f:
-            for item in tqdm(self.raw_data["causal_data"]):
-                # Ensure reasoning pairs look like: {"input": "...", "reasoning": "...", "output": "..."}
-                f.write(json.dumps(item) + "\n")
-
-    def _build_phase4(self):
-        print("Building Phase 4 (Bilingual Conversation with CoT)...")
-        with open(self.output_dir / "phase4.jsonl", "w") as f:
-            for item in tqdm(self.raw_data["chat_data"]):
-                # Apply CoT template if not already present
-                f.write(json.dumps(item) + "\n")
-
-    def add_virtual_subject_training_data(self):
-        """Add critical training examples for virtual subjects and advanced SVOMPTR rules"""
-        
-        virtual_examples = [
-            # ========================================
-            # There is (Existential) examples
-            # ========================================
-            {
-                "instruction": "Parse: There is a cat",
-                "input": "",
-                "output": "S:<VIRTUAL_EXISTENTIAL> V:is O:a cat\nInterpretation: Introducing new subject 'cat'"
-            },
-            # ... existing existential examples ...
-            
-            # ========================================
-            # Imperative (Implied Subject)
-            # ========================================
-            {
-                "instruction": "Parse: Sit down",
-                "input": "",
-                "output": "S:You(implied) V:sit M:down\nInterpretation: Command with implied subject"
-            },
-            {
-                "instruction": "Parse: Beat him",
-                "input": "",
-                "output": "S:You(implied) V:beat O:him\nInterpretation: Command with object"
-            },
-            
-            # ========================================
-            # Interjections (Emotion in M)
-            # ========================================
-            {
-                "instruction": "Parse: Wow!",
-                "input": "",
-                "output": "M:wow\nInterpretation: Emotional interjection"
-            },
-            {
-                "instruction": "Parse: Oh!",
-                "input": "",
-                "output": "M:oh\nInterpretation: Emotional interjection"
-            },
-            
-            # ========================================
-            # Intransitive Verbs (No Object)
-            # ========================================
-            {
-                "instruction": "Parse: He sleeps",
-                "input": "",
-                "output": "S:He V:sleeps\nInterpretation: Intransitive action"
-            },
-            
-            # ========================================
-            # To-infinitive (Reason in R)
-            # ========================================
-            {
-                "instruction": "Parse: I want to eat",
-                "input": "",
-                "output": "S:I V:want R:to eat\nInterpretation: Action with purpose"
-            },
-            {
-                "instruction": "Parse: He needs to go",
-                "input": "",
-                "output": "S:He V:needs R:to go\nInterpretation: Condition with goal"
-            },
-            
-            # ========================================
-            # Gerunds and Manner -ing
-            # ========================================
-            {
-                "instruction": "Parse: Running is good",
-                "input": "",
-                "output": "S:Running V:is O:good\nInterpretation: Gerund as subject"
-            },
-            {
-                "instruction": "Parse: He came running",
-                "input": "",
-                "output": "S:He V:came M:running\nInterpretation: Participle as manner"
-            },
-            
-            # ========================================
-            # Questions and Modals
-            # ========================================
-            {
-                "instruction": "Parse: What do you want?",
-                "input": "",
-                "output": "Q:What AUX:do S:you V:want\nInterpretation: Wh-question"
-            },
-            {
-                "instruction": "Parse: May I come in?",
-                "input": "",
-                "output": "Q:May S:I V:come M:in\nInterpretation: Permission request"
-            },
-            
-            # ========================================
-            # Voice (Active/Passive)
-            # ========================================
-            {
-                "instruction": "Parse: The cake was eaten by John",
-                "input": "",
-                "output": "S:The cake V:was eaten AGENT:by John\nInterpretation: Passive Voice"
-            },
-            
-            # ========================================
-            # Conditionals
-            # ========================================
-            {
-                "instruction": "Parse: If it rains, I will stay",
-                "input": "",
-                "output": "COND:If it rains S:I V:will stay\nInterpretation: First Conditional"
-            },
-            
-            # ========================================
-            # Reported Speech
-            # ========================================
-            {
-                "instruction": "Parse: He said that he was happy",
-                "input": "",
-                "output": "S:He V:said CLAUSE:that he was happy\nInterpretation: Indirect Speech"
-            },
-            
-            # ========================================
-            # Noun Clauses (S/O)
-            # ========================================
-            {
-                "instruction": "Parse: What he said is true",
-                "input": "",
-                "output": "S:[What he said] V:is O:true\nInterpretation: Wh-clause as subject"
-            }
-        ]
-        
-        # Add to training dataset
-        if "chat_data" in self.raw_data:
-            self.raw_data["chat_data"].extend(virtual_examples)
-        else:
-            self.raw_data["chat_data"] = virtual_examples
+    def _write_jsonl(self, filename, data):
+        if not data:
+            print(f"⚠️ Warning: No data for {filename}")
+            return
+        path = self.output_dir / filename
+        with open(path, "w", encoding="utf-8") as f:
+            for item in data:
+                f.write(json.dumps(item, ensure_ascii=False) + "\n")
+        print(f"📝 Created {filename} with {len(data)} samples.")

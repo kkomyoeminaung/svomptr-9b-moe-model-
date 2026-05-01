@@ -5,11 +5,13 @@ class SubExpert(nn.Module):
     Sub-Experts (0.5B): Domain specialists.
     Lightweight, high-accuracy adapters or mini-models.
     """
-    def __init__(self, domain, model_path=None):
+    def __init__(self, domain, model_path=None, config=None):
         super().__init__()
+        from .config import MoEConfig
+        self.config = config if config else MoEConfig()
         self.domain = domain
         self.name = f"expert_{domain}_0.5b"
-        self.hidden_dim = 1024
+        self.hidden_dim = self.config.hidden_dim
         self.projector = nn.Linear(self.hidden_dim, self.hidden_dim)
         self.pipe = None
         
@@ -36,6 +38,18 @@ class SubExpert(nn.Module):
     def forward(self, x, mask=None):
         # Bug #16 fix: Real neural transformation
         return self.projector(x)
+
+    def save_expert(self, path):
+        """Save expert specific weights."""
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        torch.save(self.state_dict(), path)
+        print(f"Expert weights saved to {path}")
+
+    def load_expert(self, path):
+        """Load expert specific weights."""
+        if os.path.exists(path):
+            self.load_state_dict(torch.load(path, map_location="cpu"))
+            print(f"Expert weights loaded from {path}")
 
     def generate(self, query, max_tokens=256):
         if self.pipe:

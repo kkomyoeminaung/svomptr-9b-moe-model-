@@ -30,9 +30,23 @@ class BaseTrainer:
 
     def save_checkpoint(self, path):
         import os
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        torch.save({
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-        }, path)
-        print(f"Checkpoint saved to {path}")
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            checkpoint = {
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict(),
+                'config': vars(self.config) if hasattr(self.config, '__dict__') else self.config
+            }
+            torch.save(checkpoint, path)
+            
+            # Critical verification
+            if os.path.exists(path):
+                size = os.path.getsize(path)
+                if size > 0:
+                    print(f"✅ Checkpoint verified and saved to {path} ({size/1024/1024:.2f} MB)")
+                else:
+                    print(f"❌ ERROR: Saved file {path} is empty (0 bytes)!")
+            else:
+                print(f"❌ ERROR: File {path} was not created after torch.save!")
+        except Exception as e:
+            print(f"❌ CRITICAL ERROR saving checkpoint: {e}")

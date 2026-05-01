@@ -28,27 +28,55 @@ def run():
     from torch.utils.data import DataLoader
     from transformers import AutoTokenizer
 
-    # 1. Build Data
+    # 1. Health Checks (Strict validation for Drive)
+    print(f"🔍 System Health Check...")
+    
+    # Verify storage path
+    checkpoint_base_dir = "data/checkpoints"
+    os.makedirs(checkpoint_base_dir, exist_ok=True)
+    
+    # Check if we are running in Colab and expecting Drive
+    if checkpoint_base_dir.startswith("/content/drive") and not os.path.exists("/content/drive/MyDrive"):
+        print("❌ CRITICAL ERROR: Google Drive path detected but DRIVE IS NOT MOUNTED.")
+        print("⚠️ Please run the drive mount cell first and ensure it succeeds.")
+        return
+
+    # Check write access
+    try:
+        test_file = os.path.join(checkpoint_base_dir, ".health_check")
+        with open(test_file, "w") as f: f.write("ok")
+        os.remove(test_file)
+        print("✅ Storage access verified.")
+    except Exception as e:
+        print(f"❌ CRITICAL ERROR: Cannot write to storage. Check permissions: {e}")
+        return
+
+    # 2. Build Data (MUST SUCCEED)
     raw_data_path = "data/raw/rules.json"
     processed_dir = "data/training"
     builder = DataBuilder(raw_data_path, processed_dir)
-    builder.build()
-    
-    # 2. Setup Loaders
+    try:
+        builder.build()
+    except Exception as e:
+        print(f"❌ Data Builder Failed: {e}")
+        return
+
+    # 3. Setup Loaders
     tokenizer = AutoTokenizer.from_pretrained("gpt2") 
     phase1_data = os.path.join(processed_dir, "phase1.jsonl")
     
-    train_loader = []
-    if os.path.exists(phase1_data):
-        print(f"📊 Loading Phase 1 data from {phase1_data}")
-        train_ds = SVOMPTRDataset(phase1_data, tokenizer)
-        if len(train_ds) > 0:
-            train_loader = DataLoader(train_ds, batch_size=config.batch_size if hasattr(config, 'batch_size') else 4, shuffle=True)
-            print(f"✅ Loaded {len(train_ds)} samples for Phase 1.")
-        else:
-            print(f"⚠️ Warning: {phase1_data} is empty.")
-    else:
-        print(f"⚠️ Warning: {phase1_data} not found. Ensure raw data exists.")
+    if not os.path.exists(phase1_data) or os.path.getsize(phase1_data) == 0:
+        print(f"❌ CRITICAL: Phase 1 dataset is missing or empty! ({phase1_data})")
+        return
+        
+    print(f"📊 Loading Phase 1 data: {phase1_data}")
+    train_ds = SVOMPTRDataset(phase1_data, tokenizer)
+    if len(train_ds) == 0:
+        print(f"❌ CRITICAL: Dataset contains 0 samples. Stopping.")
+        return
+        
+    train_loader = DataLoader(train_ds, batch_size=config.batch_size if hasattr(config, 'batch_size') else 4, shuffle=True)
+    print(f"✅ Loaded {len(train_ds)} samples. Preparation Complete.")
     
     val_loader = [] 
     

@@ -35,10 +35,21 @@ def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=Fal
     print(f"🚀 SVOMPTR Knowledge Distillation Pipeline {'(DRY RUN)' if dry_run else ''}")
     
     # Checkpoint support
-    checkpoint_file = "distillation_progress.json"
+    checkpoint_file = os.path.join(output_dir, "distillation_status.json") if output_dir else "distillation_status.json"
     output_temp_file = output_file + ".tmp"
     processed_components = []
     all_processed_samples = []
+
+    # 1. Environment Health Check
+    if output_dir:
+        try:
+            test_file = os.path.join(output_dir, ".write_test")
+            with open(test_file, "w") as f: f.write("ok")
+            os.remove(test_file)
+            print("✅ Storage access verified.")
+        except Exception as e:
+            print(f"❌ CRITICAL ERROR: Cannot write to {output_dir}. Please check your Drive mount!")
+            return
 
     if os.path.exists(checkpoint_file):
         try:
@@ -48,64 +59,66 @@ def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=Fal
                 print(f"🔄 Resuming: {len(processed_components)} components already finished.")
         except: pass
 
-    # Also try to load existing samples from temp file if any
-    if os.path.exists(output_temp_file) and processed_components:
+    # Restore existing samples
+    if os.path.exists(output_temp_file):
         try:
             with open(output_temp_file, "r", encoding="utf-8") as f:
                 for line in f:
                     if line.strip():
                         all_processed_samples.append(json.loads(line))
-            print(f"📦 Restored {len(all_processed_samples)} samples from {output_temp_file}")
+            print(f"📦 Restored {len(all_processed_samples)} samples from temp file.")
         except: pass
 
     remaining_components = [c for c in components if c not in processed_components]
+    if not remaining_components:
+        print("✅ Pipeline already completed for all components.")
+        return
+
     print(f"Target Components: {len(remaining_components)} remaining out of {len(components)}")
     
-    # Using tqdm for visual progress
-    pbar = tqdm(remaining_components, desc="Grammar Distillation")
+    pbar = tqdm(remaining_components, desc="Distillation Progress")
     
-    # Open temp file in append mode
-    with open(output_temp_file, "a", encoding="utf-8") as f_temp:
+    # Use unbuffered writing (flushing) to ensure Drive gets the data immediately
+    with open(output_temp_file, "a", encoding="utf-8", buffering=1) as f_temp:
         for comp in pbar:
             pbar.set_postfix({"current": comp})
             try:
                 if dry_run:
                     import time
-                    time.sleep(0.3) 
+                    time.sleep(0.5) 
                     mock_data = distiller.generate_mock_data(comp)
                     mock_json = json.dumps(mock_data)
                     samples = distiller.process_distilled_data(mock_json, memory_save=True)
                     
-                    # Store and Save incrementally
                     for s in samples:
                         f_temp.write(json.dumps(s, ensure_ascii=False) + "\n")
+                        f_temp.flush() # Force write to disk
                         all_processed_samples.append(s)
                 else:
                     prompt = distiller.generate_prompt_for_llm(comp)
-                    entry = {"component": comp, "prompt_ready": True}
+                    entry = {"component": comp, "prompt_ready": True, "timestamp": time.time()}
                     f_temp.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                    f_temp.flush()
                     all_processed_samples.append(entry)
                 
-                # Save progress checkpoint
+                # Checkpoint persistence
                 processed_components.append(comp)
                 with open(checkpoint_file, "w", encoding="utf-8") as f_ckpt:
-                    json.dump({"processed": processed_components}, f_ckpt)
+                    json.dump({"processed": processed_components, "total_samples": len(all_processed_samples)}, f_ckpt)
+            
             except Exception as e:
-                print(f"\n❌ Error distilling {comp}: {e}")
+                print(f"\n🛑 Error at component {comp}: {e}")
+                print("⚠️ Stopping pipeline to prevent data corruption. Please fix and restart.")
+                return # Stop immediately on error
 
-    # Finalize
-    if all_processed_samples:
-        if dry_run:
-            # Move temp to final
-            import shutil
-            shutil.move(output_temp_file, output_file)
-            print(f"\n🎉 Distillation Finished. {len(all_processed_samples)} samples saved to {output_file}")
-        else:
-            print(f"\n📝 All prompts generated. Check {output_temp_file}")
-    
-    # Clean up checkpoint if finished everything
-    if len(processed_components) == len(components) and os.path.exists(checkpoint_file):
-        os.remove(checkpoint_file)
+    # Finalize only if finished
+    if len(processed_components) == len(components):
+        import shutil
+        shutil.move(output_temp_file, output_file)
+        if os.path.exists(checkpoint_file): os.remove(checkpoint_file)
+        print(f"\n🎉 FULLY FINISHED. {len(all_processed_samples)} samples synced to {output_file}")
+    else:
+        print(f"\n⚠️ Pipeline interrupted. Progress saved in {output_temp_file}")
     else:
         # Create a metadata file explaining how to use these prompts
         metadata = {

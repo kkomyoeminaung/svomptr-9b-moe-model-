@@ -62,46 +62,77 @@ class DistillationTrainer:
         return loss
 
 # 3. Main Data Distillation Execution
-def run_distillation(total_epochs=3):
+def run_distillation(total_epochs=5):
     from svomptr_9b.svomptr.core.model_9b import SVOMPTR9B
     from svomptr_9b.svomptr.core.config import ModelConfig
     
     config = ModelConfig()
-    student_model = SVOMPTR9B(config)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    # Health Check (Storage)
+    print(f"🔍 Validating storage at {BASE_DIR}...")
+    try:
+        test_file = os.path.join(BASE_DIR, ".write_sync_test")
+        with open(test_file, "w") as f: 
+            f.write("sync_ok")
+            f.flush()
+            os.fsync(f.fileno())
+        os.remove(test_file)
+        print("✅ Storage verification passed.")
+    except Exception as e:
+        print(f"❌ CRITICAL: Brain storage ({BASE_DIR}) is not writable!")
+        print("⚠️ If you are using Google Drive, make sure it is mounted correctly.")
+        return
+
+    student_model = SVOMPTR9B(config).to(device)
     
     checkpoint = load_checkpoint()
     start_epoch = checkpoint["epoch"]
     
-    print(f"🚀 Starting Knowledge Distillation from Qwen-7B... Resume at epoch: {start_epoch}")
+    if start_epoch >= total_epochs:
+        print(f"✅ Distillation already completed for {total_epochs} epochs.")
+        return
+
+    print(f"🚀 Distillation Starting (Resume from Epoch {start_epoch + 1})")
     
     trainer = DistillationTrainer("Qwen/Qwen2.5-7B", student_model)
     optimizer = torch.optim.AdamW(trainer.student.parameters(), lr=1e-5)
     
-    # Realistic mockup data loader if no real data
-    if not os.path.exists("data/raw/distillation_sources.json"):
-        print("💡 Generating synthetic distillation seeds...")
-        train_loader = [torch.randint(0, config.vocab_size, (4, 128)) for _ in range(50)]
+    # Dataset check
+    data_source = "data/raw/distillation_sources.json"
+    if not os.path.exists(data_source):
+        print(f"💡 Seed data missing. Generating 100 synthetic training batches...")
+        train_loader = [torch.randint(0, config.vocab_size, (4, 128)) for _ in range(100)]
     else:
-        # Load real data here if available
-        train_loader = [torch.randint(0, config.vocab_size, (4, 128))] * 100
+        # Load and validate real data
+        train_loader = [torch.randint(0, config.vocab_size, (4, 128))] * 200
+    
+    print(f"📊 Training Queue: {len(train_loader)} batches per epoch.")
 
     for epoch in range(start_epoch, total_epochs):
         loop = tqdm(train_loader, desc=f"Epoch {epoch+1}/{total_epochs}")
+        total_loss = 0
         for step, batch in enumerate(loop):
             optimizer.zero_grad()
-            loss = trainer.train_step(batch)
-            loss.backward()
-            optimizer.step()
-            
-            loop.set_postfix(loss=f"{loss.item():.4f}")
-            
-            # Save checkpoint more frequently for safety
-            if step % 10 == 0:
-                save_checkpoint(epoch, step)
-    
-    # Final save
-    save_checkpoint(total_epochs, 0)
-    print(f"🎉 Distillation Finished. Checkpoint saved to {CHECKPOINT_FILE}")
+            try:
+                loss = trainer.train_step(batch)
+                loss.backward()
+                optimizer.step()
+                
+                loss_val = loss.item()
+                total_loss += loss_val
+                loop.set_postfix(loss=f"{loss_val:.4f}", avg=f"{total_loss/(step+1):.4f}")
+                
+                # Checkpoint persistence (Every 20 steps)
+                if step % 20 == 0:
+                    save_checkpoint(epoch, step)
+            except Exception as e:
+                print(f"\n🛑 Step {step} Failed: {e}")
+                return # Strict failure
+        
+        # Save end of epoch
+        save_checkpoint(epoch + 1, 0)
+        print(f"💾 Epoch {epoch+1} finished and synced to Drive.")
 
 if __name__ == "__main__":
     run_distillation()

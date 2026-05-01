@@ -326,10 +326,36 @@ async function startServer() {
     res.json(getHistory());
   });
 
+  app.delete("/api/history", (req, res) => {
+    try {
+        console.log("[Database] CLEARING all messages in SQLite...");
+        const result = db.prepare('DELETE FROM messages').run();
+        try { db.prepare('VACUUM').run(); } catch (e) {} // Clean up space
+        console.log(`[Database] Success. Deleted rows: ${result.changes}`);
+        res.json({ message: "History cleared successfully", deletedCount: result.changes });
+    } catch (e) {
+        console.error("[Database] Failed to clear history:", e);
+        res.status(500).json({ error: "Failed to clear history" });
+    }
+  });
+
 app.post("/api/chat", async (req, res) => {
     const { message, colabUrl } = req.body;
+    
+    // Safety check: ignore empty or extremely short messages if they look programmatic
+    if (!message || message.trim().length === 0) {
+        console.warn("[Chat] Received empty message, ignoring.");
+        return res.status(400).json({ error: "Empty message" });
+    }
+
+    console.log(`[Neural Link] [${new Date().toISOString()}] Incoming Message: "${message.substring(0, 100)}..." (Source: ${colabUrl === 'mock' ? 'Mock' : 'Colab'})`);
     const userMsgId = Date.now().toString();
-    insertMsg.run(userMsgId, 'user', message, null);
+    
+    try {
+        insertMsg.run(userMsgId, 'user', message, null);
+    } catch (e) {
+        console.error("DB Insert Error (user):", e);
+    }
 
     try {
       const mlApiUrl = (colabUrl && colabUrl !== 'mock') ? colabUrl : process.env.VITE_ML_API_URL || process.env.ML_API_URL;

@@ -4,9 +4,10 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, BrainCircuit, Mic, MicOff, Settings, Link, Loader2 } from 'lucide-react';
+import { Send, Bot, User, BrainCircuit, Mic, MicOff, Settings, Link, Loader2, Database } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import KnowledgeIngestion from './components/KnowledgeIngestion';
+import SettingsModal from './components/SettingsModal';
 
 interface Message {
   id: string;
@@ -25,6 +26,8 @@ export default function App() {
   const [recognitionLang, setRecognitionLang] = useState('en-US');
   const [backendMode, setBackendMode] = useState(() => window.localStorage.getItem('svomptr_backend_mode') || 'mock');
   const [colabUrl, setColabUrl] = useState(() => window.localStorage.getItem('svomptr_colab_url') || '');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showClearSuccess, setShowClearSuccess] = useState(false);
   const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -65,19 +68,20 @@ export default function App() {
   }, [backendMode, colabUrl]);
 
   useEffect(() => {
+    let isMounted = true;
     const init = async () => {
-        await checkBackend();
         try {
             const r = await fetch('/api/history');
-            if (r.ok) {
+            if (r.ok && isMounted) {
                 const data = await r.json();
                 if (Array.isArray(data)) {
-                    setMessages(data.map((m: any) => ({
+                    const mapped = data.map((m: any) => ({
                       id: m.id || generateId(),
-                      role: m.sender === 'user' ? 'user' : 'assistant',
+                      role: m.sender === 'user' ? 'user' : 'assistant' as any,
                       content: m.text || '',
                       frame: m.frame
-                    })));
+                    }));
+                    setMessages(mapped);
                 }
             }
         } catch (e) {
@@ -85,7 +89,37 @@ export default function App() {
         }
     };
     init();
+    return () => { isMounted = false; };
   }, []);
+
+  const deleteHistory = async () => {
+    console.log("[Maintenance] Requesting history clear...");
+    setIsLoading(true);
+    try {
+        const resp = await fetch('/api/history', { method: 'DELETE' });
+        if (resp.ok) {
+            console.log("[Maintenance] History cleared successfully.");
+            setMessages([]);
+            setShowClearSuccess(true);
+            setTimeout(() => setShowClearSuccess(false), 3000);
+            
+            // Critical: Also clear any local storage or refs that might be lingering
+            window.localStorage.removeItem('svomptr_last_msg');
+            return true;
+        } else {
+            const errData = await resp.json().catch(() => ({}));
+            console.error("[Maintenance] Server failed to clear history:", resp.status, errData);
+            alert("Server failed to clear history. Error: " + (errData.error || resp.statusText));
+            return false;
+        }
+    } catch (e) {
+        console.error("[Maintenance] Network error while clearing history:", e);
+        alert("Network error: Could not reach the server to clear history.");
+        return false;
+    } finally {
+        setIsLoading(false);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -122,9 +156,13 @@ export default function App() {
   };
 
   const sendMessage = async () => {
-    if (!input.trim() && !file) return;
+    if (isLoading || (!input.trim() && !file)) {
+        console.log("[Chat] Send blocked: empty input or loading");
+        return;
+    }
 
     const userMsgContent = input;
+    console.log(`[Chat] Sending message: "${userMsgContent.substring(0, 50)}..."`);
     const userMessage: Message = { id: generateId(), role: 'user', content: userMsgContent };
     setMessages(prev => [...prev, userMessage]);
     setInput('');
@@ -211,7 +249,29 @@ export default function App() {
             <span className="font-bold text-sm hidden lg:block text-left">Neural Ingestion</span>
           </button>
           
-          <div className="pt-6 hidden lg:block">
+            <button 
+              onClick={() => setIsSettingsOpen(true)}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all font-bold text-sm"
+            >
+              <Settings className="w-5 h-5" />
+              <span className="hidden lg:block">Neural Configuration</span>
+            </button>
+
+            <button 
+              onClick={() => {
+                const confirmed = window.confirm("PURGE NEURAL CONTEXT?\n\nThis will permanently delete all chat messages from the neural history database.");
+                if (confirmed) {
+                    deleteHistory();
+                }
+              }}
+              disabled={isLoading}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-rose-400 hover:bg-rose-50 hover:text-rose-600 transition-all font-black text-sm relative z-30 disabled:opacity-50"
+            >
+              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Database className="w-5 h-5" />}
+              <span className="hidden lg:block">Clear Neural Context</span>
+            </button>
+
+            <div className="pt-6 hidden lg:block">
              <p className="text-[10px] font-black uppercase text-slate-400 px-4 mb-2 tracking-widest">Inference Source</p>
              <div className="px-2 space-y-2">
                  <select 
@@ -224,13 +284,21 @@ export default function App() {
                  </select>
 
                  {backendMode === 'colab' && (
-                     <input
-                         type="text"
-                         placeholder="Paste Colab Localtunnel URL..."
-                         className="w-full bg-white border border-slate-200 text-slate-800 text-xs rounded-xl p-2 outline-none focus:border-amber-400"
-                         value={colabUrl}
-                         onChange={(e) => setColabUrl(e.target.value)}
-                     />
+                     <div className="space-y-1">
+                         <input
+                             type="text"
+                             placeholder="Paste .loca.lt URL..."
+                             className="w-full bg-white border border-slate-200 text-slate-800 text-[11px] font-bold rounded-xl p-2 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-50"
+                             value={colabUrl}
+                             onChange={(e) => setColabUrl(e.target.value)}
+                         />
+                         {!colabUrl && (
+                             <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-50 rounded-lg border border-amber-100">
+                                 <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+                                 <p className="text-[9px] font-black text-amber-700 uppercase">Gateway URL Required</p>
+                             </div>
+                         )}
+                     </div>
                  )}
              </div>
           </div>
@@ -257,8 +325,18 @@ export default function App() {
             <span className="font-black text-lg tracking-tighter">SVOMPTR</span>
           </div>
           <div className="flex gap-1">
+            <button 
+              onClick={() => {
+                if (window.confirm("Purge history?")) deleteHistory();
+              }} 
+              disabled={isLoading}
+              className="p-3 text-slate-400 hover:text-rose-500 active:scale-90 transition-all font-bold disabled:opacity-50"
+              title="Clear History"
+            >
+               {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Database className="w-5 h-5 text-rose-400" />}
+            </button>
             <button onClick={() => setActiveTab('chat')} className={`p-2 rounded-lg ${activeTab === 'chat' ? 'bg-blue-50 text-blue-600' : 'text-slate-400'}`}><Bot className="w-5 h-5" /></button>
-            <button onClick={() => setActiveTab('management')} className={`p-2 rounded-lg ${activeTab === 'management' ? 'bg-blue-50 text-blue-600' : 'text-slate-400'}`}><Settings className="w-5 h-5" /></button>
+            <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-slate-400"><Settings className="w-5 h-5" /></button>
           </div>
         </header>
 
@@ -420,7 +498,32 @@ export default function App() {
           </div>
         </main>
       </div>
+
+      <SettingsModal 
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        backendMode={backendMode}
+        setBackendMode={setBackendMode}
+        colabUrl={colabUrl}
+        setColabUrl={setColabUrl}
+        backendStatus={backendStatus}
+        onClearHistory={deleteHistory}
+        isLoading={isLoading}
+      />
+
+      <AnimatePresence>
+        {showClearSuccess && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 bg-slate-900 text-white rounded-full shadow-2xl flex items-center gap-3 border border-slate-800"
+          >
+            <Database className="w-4 h-4 text-emerald-400" />
+            <span className="text-[11px] font-black uppercase tracking-widest">Neural Context Purged</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
-
 }

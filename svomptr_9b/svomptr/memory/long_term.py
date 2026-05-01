@@ -42,11 +42,17 @@ class LongTermMemory:
         return faiss.IndexIDMap(base_index)
 
     def add_memory(self, text):
-        embedding = self.encoder.encode([text]).astype('float32')
+        """Original method for single text ingestion."""
+        self.store_memory(text)
+
+    def store_memory(self, text, metadata=""):
+        """Stores text with optional metadata for RAG."""
+        combined = f"{text}\nMetadata: {metadata}" if metadata else text
+        embedding = self.encoder.encode([combined]).astype('float32')
         
         # Store in SQLite first to get row ID
         cursor = self.conn.cursor()
-        cursor.execute("INSERT INTO memory (text) VALUES (?)", (text,))
+        cursor.execute("INSERT INTO memory (text) VALUES (?)", (combined,))
         db_id = cursor.lastrowid
         self.conn.commit()
         

@@ -20,12 +20,12 @@ print(f"✅ Brain storage set at {BASE_DIR}")
 
 def load_checkpoint():
     if os.path.exists(CHECKPOINT_FILE):
-        with open(CHECKPOINT_FILE, 'r') as f:
+        with open(CHECKPOINT_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
     return {"epoch": 0, "step": 0}
 
 def save_checkpoint(epoch, step):
-    with open(CHECKPOINT_FILE, 'w') as f:
+    with open(CHECKPOINT_FILE, 'w', encoding='utf-8') as f:
         json.dump({"epoch": epoch, "step": step}, f)
 
 # 2. Distillation Trainer

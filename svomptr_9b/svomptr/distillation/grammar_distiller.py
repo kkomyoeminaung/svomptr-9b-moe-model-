@@ -11,8 +11,9 @@ class GrammarDistiller:
     Uses all 36 grammar components to generate complex training samples.
     """
     
-    def __init__(self):
+    def __init__(self, memory=None):
         self.parser = SVOMPTRCompleteParser()
+        self.memory = memory
         
     def generate_prompt_for_llm(self, component_name: str, count: int = 10) -> str:
         """
@@ -132,10 +133,8 @@ class GrammarDistiller:
                 processed_samples.append(sample)
                 
                 # Save to Long Term Memory for RAG and Dreaming
-                if memory_save:
-                    from ..memory.long_term import LongTermMemory
-                    mem = LongTermMemory()
-                    mem.store_memory(
+                if self.memory and memory_save:
+                    self.memory.store_memory(
                         sentence, 
                         f"SVOMPTR: {json.dumps(sample['target'])} | MM: {sample['myanmar']}"
                     )

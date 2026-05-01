@@ -17,11 +17,11 @@ class ChatFirstMoE(nn.Module):
         self.config = config
         
         # Expert 0: Main Chat Expert (2.5B)
-        self.chat_expert = ChatExpert()
+        self.chat_expert = ChatExpert(config=config)
         
         # Experts 1-12: Sub-Experts (0.5B each)
         self.sub_experts = nn.ModuleList([
-            SubExpert(domain) for domain in config.domain_names[1:]
+            SubExpert(domain, config=config) for domain in config.domain_names[1:]
         ])
         
         # The MoE Router (Lightweight classifier)

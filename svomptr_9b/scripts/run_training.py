@@ -24,16 +24,31 @@ def run():
     
     model = SVOMPTR9B(config).to(device)
     
+    from svomptr_9b.training.dataset import SVOMPTRDataset
+    from torch.utils.data import DataLoader
+    from transformers import AutoTokenizer
+
     # 1. Build Data
     raw_data_path = "data/raw/rules.json"
-    if not os.path.exists(raw_data_path):
-        print(f"Error: {raw_data_path} not found.")
-        return
-
-    builder = DataBuilder(raw_data_path, "data/training")
+    processed_dir = "data/training"
+    builder = DataBuilder(raw_data_path, processed_dir)
     builder.build()
     
-    # 2. Run Phases
+    # 2. Setup Loaders
+    tokenizer = AutoTokenizer.from_pretrained("gpt2") # Use any standard tokenizer for testing
+    phase1_data = os.path.join(processed_dir, "phase1.jsonl")
+    
+    if os.path.exists(phase1_data):
+        print(f"📊 Loading Phase 1 data from {phase1_data}")
+        train_ds = SVOMPTRDataset(phase1_data, tokenizer)
+        train_loader = DataLoader(train_ds, batch_size=config.batch_size if hasattr(config, 'batch_size') else 4, shuffle=True)
+    else:
+        print(f"⚠️ Warning: {phase1_data} not found. Ensure raw data exists.")
+        train_loader = []
+    
+    val_loader = [] # Placeholder
+    
+    # 3. Run Phases
     phases = [
         ("1", Phase1SlotTrainer, "Phase 1: Slot Logic & Grammar Patterns"),
         # ("2", Phase2MLMTrainer, "Phase 2: Bilingual Masked Modeling"), # Future

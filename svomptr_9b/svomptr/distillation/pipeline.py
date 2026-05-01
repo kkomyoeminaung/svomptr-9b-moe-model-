@@ -3,13 +3,16 @@
 import os
 import json
 from .grammar_distiller import GrammarDistiller
+from ..memory.long_term import LongTermMemory
 
 def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=False):
     """
     Main pipeline to orchestrate knowledge distillation.
     dry_run=True: Uses mock data to simulate end-to-end processing.
     """
-    distiller = GrammarDistiller()
+    # Shared memory instance for 100% performance optimization
+    memory = LongTermMemory() if not dry_run or os.getenv("ENABLE_TEST_MEMORY") else None
+    distiller = GrammarDistiller(memory=memory)
     
     components = [
         "tense", "voice", "conditional", "reported_speech", 

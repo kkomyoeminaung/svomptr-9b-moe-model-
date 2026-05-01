@@ -24,8 +24,20 @@ class SVOMPTR9B(nn.Module):
             config = ModelConfig()
         self.config = config
         
-        # Core Architecture
-        self.layers = nn.ModuleList([nn.Linear(config.hidden_dim, config.hidden_dim) for _ in range(config.num_layers)])
+        # Core Architecture: Neural Backbone
+        self.embedding = nn.Embedding(config.vocab_size, config.hidden_dim)
+        self.layers = nn.ModuleList([
+            nn.TransformerEncoderLayer(
+                d_model=config.hidden_dim, 
+                nhead=8, 
+                dim_feedforward=config.hidden_dim * 4,
+                batch_first=True
+            ) for _ in range(config.num_layers)
+        ])
+        self.lm_head = nn.Linear(config.hidden_dim, config.vocab_size)
+        
+        # Slot Prediction Head (Bug #10, Priority 8)
+        self.slot_predictor = nn.Linear(config.hidden_dim, 7) # S,V,O,M,P,T,R
         
         # Integrate advanced features
         self.memory = LongTermMemory()
@@ -41,7 +53,26 @@ class SVOMPTR9B(nn.Module):
         self.complete_parser = SVOMPTRCompleteParser()
         
         if config.quantization:
+            from ..layers.quantization import quantize_model
             quantize_model(self, bits=config.quantization)
+
+    def forward(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None, return_slots: bool = False):
+        """
+        Forward pass for training and inference.
+        """
+        x = self.embedding(input_ids)
+        
+        # Pass through transformer layers
+        for layer in self.layers:
+            x = layer(x, src_key_padding_mask=attention_mask)
+            
+        logits = self.lm_head(x)
+        
+        if return_slots:
+            slot_logits = self.slot_predictor(x)
+            return logits, x, slot_logits
+            
+        return logits, x
 
     def chat(self, message: str) -> Dict:
         """

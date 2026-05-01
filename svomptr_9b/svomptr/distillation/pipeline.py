@@ -11,18 +11,25 @@ def run_distillation_pipeline(output_file="distilled_dataset.jsonl"):
     """
     distiller = GrammarDistiller()
     
-    # 36 Grammar Components List (Comprehensive)
+    # Bug #13 Fix: Updated list to match "36 components" (approx) 
+    # Adding more granular categories for comprehensive coverage
     components = [
         "tense", "voice", "conditional", "reported_speech", 
         "conjunctions", "negation", "causative", "ellipsis", 
         "discourse", "emphasis", "prepositions", "determiners", 
         "numerals", "phrasal_verbs", "subjunctive", "reflexive", 
         "adverbs", "clauses", "appositives", "tag_questions", 
-        "absolute_phrases", "punctuation", "myanmar_grammar"
+        "absolute_phrases", "punctuation", "myanmar_particles",
+        "honorifics", "verb_suffixes", "noun_markers", "demonstratives",
+        "relative_clauses", "comparative_degree", "superlative",
+        "idiomatic_expressions", "interjections", "modal_verbs",
+        "gerunds", "infinitives", "participles"
     ]
     
     # Ensure directory for output exists
-    os.makedirs(os.path.dirname(output_file) if os.path.dirname(output_file) else ".", exist_ok=True)
+    output_dir = os.path.dirname(output_file)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
     
     print(f"Starting SVOMPTR Knowledge Distillation Pipeline...")
     print(f"Target Components: {len(components)}")

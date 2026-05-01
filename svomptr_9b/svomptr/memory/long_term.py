@@ -13,6 +13,7 @@ class LongTermMemory:
         
         # Ensure directories exist
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        os.makedirs(os.path.dirname(index_path), exist_ok=True)
         
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self._init_db()

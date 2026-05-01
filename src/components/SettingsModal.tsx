@@ -10,7 +10,7 @@ interface SettingsModalProps {
   colabUrl: string;
   setColabUrl: (url: string) => void;
   backendStatus: string;
-  onClearHistory: () => void;
+  onClearHistory: () => Promise<boolean>;
   isLoading: boolean;
 }
 

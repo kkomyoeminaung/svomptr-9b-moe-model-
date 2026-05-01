@@ -9,6 +9,8 @@ class SubExpert(nn.Module):
         super().__init__()
         self.domain = domain
         self.name = f"expert_{domain}_0.5b"
+        self.hidden_dim = 1024
+        self.projector = nn.Linear(self.hidden_dim, self.hidden_dim)
         self.pipe = None
         
         import os
@@ -32,7 +34,8 @@ class SubExpert(nn.Module):
             print(f"[MoE] {domain.capitalize()} Expert (0.5B) Initialized in mock mode.")
 
     def forward(self, x, mask=None):
-        return x
+        # Bug #16 fix: Real neural transformation
+        return self.projector(x)
 
     def generate(self, query, max_tokens=256):
         if self.pipe:

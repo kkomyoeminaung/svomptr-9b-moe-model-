@@ -6,12 +6,19 @@ import os
 import json
 
 class AutoLearner:
-    def __init__(self, drive_base_path='/content/drive/MyDrive/svomptr_brain'):
-        self.memory = LongTermMemory()
+    def __init__(self, drive_base_path=None, memory=None):
+        self.memory = memory if memory else LongTermMemory()
         self.ddgs = DDGS()
+        
+        # Bug #25 Fix: Cross-platform brain path
+        if drive_base_path is None:
+            drive_base_path = os.environ.get('SVOMPTR_BRAIN_PATH', os.path.join(os.getcwd(), 'svomptr_brain'))
+            
         self.drive_path = drive_base_path
         self.progress_file = os.path.join(self.drive_path, 'learning_progress.json')
         self.subjects_file = os.path.join(self.drive_path, 'subjects_config.json')
+        
+        os.makedirs(self.drive_path, exist_ok=True)
         self.subjects = self._load_subjects()
 
     def _load_subjects(self):

@@ -8,8 +8,8 @@ class Dreamer:
     """Idle-state self-learning and self-correction."""
     def __init__(self, model):
         self.model = model
-        self.memory = LongTermMemory()
-        self.learner = AutoLearner()
+        self.memory = model.memory
+        self.learner = AutoLearner(memory=self.memory)
         print("💤 Dreamer initialized. Ready to explore and reflect.")
 
     def dream(self):

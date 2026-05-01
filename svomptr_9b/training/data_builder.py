@@ -9,12 +9,29 @@ from tqdm import tqdm
 class DataBuilder:
     """Builds 4-phase training data with high-quality bilingual reasoning (CoT) pairs"""
     def __init__(self, raw_data_path: str, output_dir: str):
-        self.raw_data = json.load(open(raw_data_path, 'r')) # Expected to have CoT & Bilingual data
+        with open(raw_data_path, 'r', encoding='utf-8') as f:
+            self.raw_data = json.load(f) # Expected to have CoT & Bilingual data
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
+    def add_virtual_subject_training_data(self):
+        """
+        Supports 'Hidden Subject' logic (Pro-drop) where Burmese sentences omit 'I' or 'It'.
+        """
+        print("💡 Adding Virtual Subject (Pro-drop) logic samples...")
+        special_samples = [
+            {"en": "I am eating.", "my": "စားနေတယ်။", "svomptr": "S(hidden):I, V:eating"},
+            {"en": "It is raining.", "my": "မိုးရွာနေတယ်။", "svomptr": "S(hidden):It, V:raining"}
+        ]
+        if 'grammar_data' not in self.raw_data:
+            self.raw_data['grammar_data'] = []
+        self.raw_data['grammar_data'].extend(special_samples)
+
     def build(self):
         print("🚀 Building Enhanced 4-phase training dataset...")
+        
+        # Add special cases for grammar logic
+        self.add_virtual_subject_training_data()
         
         # Phase 1: Slot Prediction
         self._build_phase1()
@@ -28,7 +45,7 @@ class DataBuilder:
         # Phase 4: Conversation (Bilingual SFT + CoT)
         self._build_phase4()
         
-        print("✅ Bilingual Reasoning Data built successfully.")
+        print(f"✅ Data built in {self.output_dir}. Total Chat Samples: {len(self.raw_data.get('chat_data', []))}")
 
     def _build_phase1(self):
         print("Building Phase 1 (Slot Prediction)...")

@@ -1,0 +1,23 @@
+{
+  "slot_data": [
+    {"text": "I ate an apple yesterday.", "slots": {"S": "I", "V": "ate", "O": "an apple", "M": null, "P": null, "T": "yesterday", "R": null}}
+  ],
+  "unlabeled_data": [
+    {"text": "The quick brown fox jumps over the lazy dog."}
+  ],
+  "causal_data": [
+    {"pos": "Correct sentence structure.", "neg": "Sentence structure incorrect."}
+  ],
+  "chat_data": [
+    {"prompt": "Hello!", "response": "Greetings! I am SVOMPTR-9B. How can I assist with your grammatical analysis today?"}
+  ],
+  "grammar_rules": {
+    "S": "Subject - The doer of the action",
+    "V": "Verb - The action performed",
+    "O": "Object - The receiver of the action",
+    "M": "Modifier - Describes the action or participants",
+    "P": "Place - Where the action occurred",
+    "T": "Time - When the action occurred",
+    "R": "Reason - Why the action occurred"
+  }
+}

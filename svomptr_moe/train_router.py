@@ -61,7 +61,7 @@ def train_router():
             logits = router.classifier(X)
             loss = criterion(logits, y)
             loss.backward()
-            optimizer.save_step = optimizer.step()
+            optimizer.step()
             
             if (epoch + 1) % 10 == 0:
                 acc = (logits.argmax(1) == y).float().mean()

@@ -84,18 +84,24 @@ class GrammarDistiller:
         training ready data အဖြစ် သိမ်းဆည်းခြင်း။
         """
         try:
-            # Handle potential markdown code blocks in LLM response
+            # Bug #14 Fix: Robust markdown and JSON cleaning
             clean_json = llm_json_response.strip()
-            if clean_json.startswith("```"):
-                clean_json = clean_json.split("```")[1]
-                if clean_json.startswith("json"):
-                    clean_json = clean_json[4:]
+            if "```json" in clean_json:
+                clean_json = clean_json.split("```json")[1].split("```")[0].strip()
+            elif "```" in clean_json:
+                clean_json = clean_json.split("```")[1].split("```")[0].strip()
             
             data = json.loads(clean_json)
+            # Ensure it's a list
+            if not isinstance(data, list):
+                data = [data]
+                
             processed_samples = []
             
             for item in data:
-                sentence = item['en']
+                sentence = item.get('en', item.get('sentence', ''))
+                if not sentence: continue
+                
                 # SVOMPTR Parser နဲ့ parse လုပ်မယ်
                 parse_result = self.parser.parse(sentence)
                 

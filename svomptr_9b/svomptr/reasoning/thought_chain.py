@@ -4,12 +4,16 @@ class ThoughtChain:
     def __init__(self):
         self.prefix = "Let's think step by step:"
     
-    def generate_thought(self, prompt):
-        # We assume prompt contains "Context: ... | Structure: S=..., V=..., O=... | Input: ..."
-        # So we can output a structured thought process
+    def generate_thought(self, prompt, context_hint=None):
+        """
+        Generates a sequence of internal logic steps (Chain of Thought).
+        """
+        if context_hint:
+             return f"1. Context recognized: {context_hint}. 2. Analyzing grammar based on SVOMPTR. 3. Outputting precise translation."
+             
         steps = [
-            f"1. Analyzing Input based on SVOMPTR frame.",
-            f"2. Context retrieved.",
-            f"3. Formulating response based on syntax and meaning."
+            "1. Analyzing Input based on SVOMPTR frame.",
+            "2. Context retrieved from long-term memory.",
+            "3. Formulating response based on syntax and meaning."
         ]
         return " | ".join(steps)

@@ -14,6 +14,11 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   frame?: any;
+  routing?: {
+    main_expert: string;
+    active_domain: string;
+    confidence: number;
+  };
 }
 
 export default function App() {
@@ -201,16 +206,18 @@ export default function App() {
           const data = await response.json();
           assistantContent = data.response || 'No response';
           frameData = data.frame || null;
+          const routingData = data.routing || null;
+          
+          setMessages(prev => [...prev, {
+            id: generateId(),
+            role: 'assistant',
+            content: assistantContent,
+            frame: frameData,
+            routing: routingData
+          }]);
       } catch (err) {
-          throw err; // Caught by outer try/catch
+          throw err; 
       }
-      
-      setMessages(prev => [...prev, {
-        id: generateId(),
-        role: 'assistant',
-        content: assistantContent,
-        frame: frameData
-      }]);
     } catch (error) {
       setMessages(prev => [...prev, {
         id: generateId(),
@@ -384,6 +391,38 @@ export default function App() {
                           {msg.role === 'user' ? <User className="w-5 h-5 text-white" /> : <Bot className="w-6 h-6 text-white" />}
                         </div>
                         <div className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                          {msg.routing && (
+                            <div className="w-full flex items-center gap-3 px-4 py-2 bg-slate-900/5 rounded-2xl border border-slate-100 mb-1">
+                                <div className="flex items-center gap-2">
+                                    <BrainCircuit className="w-3 h-3 text-indigo-500" />
+                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Neural Gate:</span>
+                                </div>
+                                <div className="flex-1 flex items-center gap-2">
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${msg.routing.active_domain !== 'general' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                                        {msg.routing.active_domain.toUpperCase()} EXPERT
+                                    </span>
+                                    <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden max-w-[60px]">
+                                        <motion.div 
+                                            initial={{ width: 0 }}
+                                            animate={{ width: `${msg.routing.confidence * 100}%` }}
+                                            className="h-full bg-indigo-500"
+                                        />
+                                    </div>
+                                    <span className="text-[9px] font-black text-indigo-500">{(msg.routing.confidence * 100).toFixed(0)}%</span>
+                                </div>
+                                {msg.routing.self_refined && (
+                                    <motion.div 
+                                      initial={{ opacity: 0, scale: 0.9 }}
+                                      animate={{ opacity: 1, scale: 1 }}
+                                      className="flex items-center gap-1.5 px-2 py-0.5 bg-rose-50 border border-rose-100 rounded-md"
+                                      title={msg.routing.critique}
+                                    >
+                                        <div className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse" />
+                                        <span className="text-[9px] font-black text-rose-600 uppercase">Self-Corrected</span>
+                                    </motion.div>
+                                )}
+                            </div>
+                          )}
                           <div className={`px-6 py-5 rounded-3xl shadow-sm leading-relaxed whitespace-pre-wrap text-[15px] ${
                             msg.role === 'user' 
                               ? 'bg-white border border-slate-200 text-slate-900 rounded-tr-none' 
@@ -408,6 +447,25 @@ export default function App() {
                                     </div>
                                   ))}
                                 </div>
+                            </div>
+                          )}
+                          {msg.role === 'assistant' && (
+                            <div className="flex gap-2 mt-2">
+                                <button className="px-3 py-1 bg-white border border-slate-100 rounded-lg text-[10px] font-bold text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-all">
+                                    Helpful
+                                </button>
+                                <button 
+                                    onClick={() => {
+                                        const correct = window.prompt("Teach me: What should be the correct translation/structure?");
+                                        if (correct) {
+                                            setInput(`Correction: For "${msg.content.split('\n')[0].replace('Translation:', '').strip()}", it should be "${correct}"`);
+                                            sendMessage();
+                                        }
+                                    }}
+                                    className="px-3 py-1 bg-white border border-slate-100 rounded-lg text-[10px] font-bold text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-all"
+                                >
+                                    Improve Answer
+                                </button>
                             </div>
                           )}
                         </div>

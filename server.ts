@@ -111,7 +111,43 @@ async function startServer() {
   });
   
   app.use(express.json({ limit: '10mb' }));
+
+  // Auto-spawn Python ML API
+  const { spawn } = await import("child_process");
+  console.log("🚀 Initializing Python Neural Link (ml_api.py)...");
+  const pyProcess = spawn("python3", ["ml_api.py"], {
+    stdio: 'inherit',
+    detached: false
+  });
+  pyProcess.on('error', (err) => {
+    console.error("❌ Failed to start Python Neural Link:", err);
+  });
   
+  app.post("/api/synthesize", async (req, res) => {
+    try {
+      const pyResp = await fetch("http://localhost:8000/api/synthesize", {
+        method: "POST"
+      });
+      const data = await pyResp.json();
+      res.json(data);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to connect to synthesis engine" });
+    }
+  });
+
+  app.get("/api/grammar-rules", async (req, res) => {
+    try {
+      const pyResp = await fetch("http://localhost:8000/api/grammar-rules");
+      if (pyResp.ok) {
+        const data = await pyResp.json();
+        return res.json(data);
+      }
+      res.json({ rules: [] });
+    } catch (e) {
+      res.json({ rules: ["Local Rule Engine: Offline Fallback Memory"] });
+    }
+  });
+
   // Health Check Endpoint
   app.get("/api/health", async (req, res) => {
     const colabUrl = req.query.colabUrl as string;
@@ -379,10 +415,25 @@ app.post("/api/chat", async (req, res) => {
           }
           responseData = await response.json();
       } else {
-          responseData = {
-              response: "[Mock Pipeline Demo] Neural Core is running in simulated mode. Switch Inference Source to Colab GPU to test the actual model capability.",
-              frame: { S: "System", V: "Simulate", O: "Demo Route", R: "Success" }
-          };
+          // Local Neural Core Backend (ml_api.py)
+          try {
+              const localResponse = await fetch(`http://localhost:8000/api/chat`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ message }),
+              });
+              if (localResponse.ok) {
+                  responseData = await localResponse.json();
+              } else {
+                  throw new Error("Local engine not responding properly");
+              }
+          } catch (e) {
+              console.warn("[Local Backend] Falling back to rule-based fallback in Node as Python core is offline.");
+              responseData = {
+                  response: `[Local Rule Engine] Analyzing: ${message}`,
+                  frame: { S: "Local", V: "Rule", O: "Engine", R: "Offline Fallback" }
+              };
+          }
       }
 
       const botMsgId = (Date.now() + 1).toString();

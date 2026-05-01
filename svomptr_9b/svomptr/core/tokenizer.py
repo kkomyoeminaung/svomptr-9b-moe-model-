@@ -1,38 +1,33 @@
 # svomptr/core/tokenizer.py
+import torch
 
-from transformers import AutoTokenizer
-import pyidaungsu as pds
-from typing import List, Dict
-
-class SVOMPTRTokenizer:
-    """Multilingual Tokenizer (Myanmar + English)"""
-    def __init__(self, config):
-        self.config = config
-        # Load a base multilingual tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained("google/mt5-small")
-        self.eos_id = self.tokenizer.eos_token_id
-
-        # Virtual subject special tokens
-        self.virtual_tokens = {
-            "<VIRTUAL_EXISTENTIAL>": self._add_token("<VIRTUAL_EXISTENTIAL>"),
-            "<VIRTUAL_WEATHER>": self._add_token("<VIRTUAL_WEATHER>"),
-            "<VIRTUAL_GENERAL>": self._add_token("<VIRTUAL_GENERAL>"),
+class RuleTokenizer:
+    """A rule-based tokenizer for structural SVOMPTR processing."""
+    def __init__(self, vocab_size=50257):
+        self.vocab_size = vocab_size
+        self.pad_token_id = 0
+        self.eos_token_id = vocab_size - 1
+        
+    def __call__(self, text, max_length=128, padding='max_length', truncation=True, **kwargs):
+        # Extremely simple deterministic mapping for preview
+        ids = [ord(c) % (self.vocab_size - 2) + 1 for c in str(text)[:max_length]]
+        
+        if truncation:
+            ids = ids[:max_length]
+            
+        attention_mask = [1] * len(ids)
+        
+        if padding == 'max_length':
+            pad_len = max_length - len(ids)
+            ids += [self.pad_token_id] * pad_len
+            attention_mask += [0] * pad_len
+            
+        return {
+            "input_ids": torch.tensor([ids], dtype=torch.long),
+            "attention_mask": torch.tensor([attention_mask], dtype=torch.long)
         }
-        
-    def _add_token(self, token: str) -> int:
-        """Add a new token to vocabulary"""
-        if token not in self.tokenizer.get_vocab():
-            self.tokenizer.add_special_tokens({"additional_special_tokens": [token]})
-        return self.tokenizer.convert_tokens_to_ids(token)
-        
-    def encode(self, text: str) -> List[int]:
-        # Pre-process Myanmar text
-        text = pds.tokenize(text, lang='mm', form='word')
-        text = " ".join(text)
-        return self.tokenizer.encode(text)
-        
-    def decode(self, tokens: List[int], skip_special_tokens: bool = True) -> str:
-        return self.tokenizer.decode(tokens, skip_special_tokens=skip_special_tokens)
-
-    def save(self, path: str):
-        self.tokenizer.save_pretrained(path)
+    
+    def decode(self, ids):
+        if torch.is_tensor(ids):
+            ids = ids.tolist()
+        return "".join([chr(i - 1) if i > 0 else "" for i in ids if i < self.vocab_size - 1])

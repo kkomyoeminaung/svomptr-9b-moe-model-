@@ -61,7 +61,36 @@ def chat(req: ChatRequest):
 
 @app.post("/api/ingest")
 def ingest(data: dict):
+    if engine and hasattr(engine, 'memory'):
+        engine.memory.store_memory(data.get("text", ""))
     return {"status": "ingested", "kb_length": len(data.get("text", ""))}
+
+@app.get("/api/grammar-rules")
+def get_grammar_rules():
+    if engine and hasattr(engine, 'memory'):
+        rules = engine.memory.get_all_memories()
+        # Filter for rule markers
+        grammar_rules = [r for r in rules if "RULE_" in r or "USER FEEDBACK" in r.upper()]
+        return {"rules": grammar_rules}
+    return {"rules": []}
+
+@app.post("/api/synthesize")
+def synthesize():
+    """Triggers the self-recursive improvement process."""
+    if engine and hasattr(engine, 'memory'):
+        # 1. Get raw candidate memories
+        candidates = engine.memory.synthesize_rules()
+        new_rules = []
+        for c in candidates:
+            # Simulate Neural Extraction: Transform raw translation into a Grammar Rule
+            if "Translation:" in c:
+                clean = c.split("Translation:")[-1].strip()
+                # Store it back as a rule if detected as a recurring pattern
+                engine.memory.add_grammar_rule("Synthesized Phrase", clean, {})
+                new_rules.append(f"Autonomous Extraction: {clean}")
+        
+        return {"status": "success", "new_rules_count": len(new_rules), "samples": new_rules}
+    return {"status": "error", "message": "Engine not initialized"}
 
 @app.post("/api/start-learning")
 def start_learning():

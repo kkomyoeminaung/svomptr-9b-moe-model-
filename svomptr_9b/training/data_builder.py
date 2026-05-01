@@ -54,18 +54,45 @@ class DataBuilder:
         
         # Check if data already exists to avoid redundant building
         checkpoint_file = self.output_dir / ".builder_progress"
-        if os.path.exists(checkpoint_file):
+        force_rebuild = os.environ.get("FORCE_REBUILD", "false").lower() == "true"
+        
+        if os.path.exists(checkpoint_file) and not force_rebuild:
             print("🔄 Previous build progress found. Checking files...")
             files = ["phase1.jsonl", "phase2.jsonl", "phase3.jsonl", "phase4.jsonl"]
             if all((self.output_dir / f).exists() for f in files):
                 print("✅ All dataset files already exist. Skipping build.")
                 return
+        
+        if force_rebuild:
+            print("♻️  FORCE_REBUILD enabled. Overwriting existing data...")
 
         # Add special cases for grammar logic
         self.add_virtual_subject_training_data()
         
         os.makedirs(self.output_dir, exist_ok=True)
         
+        # Import and merge distilled samples if they exist (Integrity Check)
+        distilled_path = Path("data/raw/rules.json")
+        if distilled_path.exists():
+            print(f"📦 Integrating real Distilled Data from Step 1: {distilled_path}")
+            try:
+                with open(distilled_path, "r", encoding="utf-8") as f:
+                    # Distilled data is often JSONL or list
+                    lines = f.readlines()
+                    for line in lines:
+                        try:
+                            item = json.loads(line)
+                            # Convert distilled format to training format
+                            if "en" in item and "my" in item:
+                                if "slot_data" not in self.raw_data: self.raw_data["slot_data"] = []
+                                self.raw_data["slot_data"].append({"input": item["en"], "target": f"S:{item.get('component', 'unknown')}"})
+                                
+                                if "chat_data" not in self.raw_data: self.raw_data["chat_data"] = []
+                                self.raw_data["chat_data"].append({"instruction": f"Translate and analyze: {item['en']}", "input": "", "output": f"Burmese: {item['my']}\nComponent: {item.get('component', 'N/A')}"})
+                        except: pass
+            except Exception as e:
+                print(f"⚠️ Error merging distilled data: {e}")
+
         # Phase 1: Slot Prediction
         self._write_jsonl("phase1.jsonl", self.raw_data.get("slot_data", []))
         

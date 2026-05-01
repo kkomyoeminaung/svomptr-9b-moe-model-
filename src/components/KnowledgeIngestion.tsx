@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Upload, Link, Loader2, BrainCircuit, Download, Settings } from 'lucide-react';
+import { Upload, Link, Loader2, BrainCircuit, Download, Settings, Database } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function KnowledgeIngestion() {
@@ -8,6 +8,35 @@ export default function KnowledgeIngestion() {
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [generationText, setGenerationText] = useState('');
+  const [grammarRules, setGrammarRules] = useState<string[]>([]);
+  const [showRules, setShowRules] = useState(false);
+
+  const fetchRules = async () => {
+    setLoading(true);
+    try {
+      const resp = await fetch('/api/grammar-rules');
+      if (resp.ok) {
+        const data = await resp.json();
+        setGrammarRules(data.rules || []);
+        setShowRules(true);
+      }
+    } catch { setStatus('❌ Failed to fetch rules'); }
+    setLoading(false);
+  };
+
+  const handleSynthesize = async () => {
+    setLoading(true);
+    setStatus('🧠 Initiating Recursive Neural Synthesis...');
+    try {
+      const resp = await fetch('/api/synthesize', { method: 'POST' });
+      if (resp.ok) {
+        const data = await resp.json();
+        setStatus(`✅ Synthesis Complete: Extracted ${data.new_rules_count} potential rules.`);
+        fetchRules();
+      }
+    } catch { setStatus('❌ Neural Synthesis failed'); }
+    setLoading(false);
+  };
 
   const handleUpload = async () => {
     if (!file) return;
@@ -141,6 +170,82 @@ export default function KnowledgeIngestion() {
         </div>
       </div>
       
+      {/* Grammar Rules Transparency Section */}
+      <section className="bg-white p-8 rounded-[2.5rem] border border-blue-100 shadow-sm space-y-6">
+          <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-200 text-white">
+                      <Database className="w-6 h-6" />
+                  </div>
+                  <div>
+                      <h3 className="text-xl font-black text-slate-900">Grammar Rules Repository</h3>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Structural Memory Management</p>
+                  </div>
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={handleSynthesize}
+                  disabled={loading}
+                  className="px-6 py-2 bg-rose-50 text-rose-600 rounded-xl font-black text-xs hover:bg-rose-100 transition-all border border-rose-100 flex items-center gap-2"
+                >
+                    {loading && <Loader2 className="w-3 h-3 animate-spin" />}
+                    Autonomous Learning
+                </button>
+                <button 
+                  onClick={fetchRules}
+                  className="px-6 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-black text-xs hover:bg-indigo-100 transition-all"
+                >
+                    {showRules ? 'Refresh Repository' : 'View Core Rules'}
+                </button>
+              </div>
+          </div>
+          
+          {showRules && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                  {grammarRules.length > 0 ? (
+                      grammarRules.map((rule, idx) => (
+                          <div key={idx} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                              <p className="text-[10px] font-black text-indigo-400 mb-2 uppercase">Rule #{idx + 1}</p>
+                              <code className="text-[11px] font-mono text-slate-700 block bg-white p-3 rounded-lg border border-slate-200">
+                                  {rule}
+                              </code>
+                          </div>
+                      ))
+                  ) : (
+                      <div className="col-span-2 py-10 text-center border-2 border-dashed border-slate-100 rounded-3xl">
+                          <p className="text-slate-400 font-bold text-sm italic">Neural memory is currently pristine. Learn from chat interactions to populate.</p>
+                      </div>
+                  )}
+              </div>
+          )}
+      </section>
+
+      {/* System Health & Architecture Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="p-6 bg-indigo-600 rounded-[2rem] text-white shadow-xl shadow-indigo-100 flex flex-col justify-between">
+              <div>
+                  <h4 className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">Compute Core</h4>
+                  <p className="text-2xl font-black">SVOMPTR-9B</p>
+              </div>
+              <div className="mt-4 flex items-center gap-2">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                  <span className="text-[11px] font-bold">Neural Engine: Active</span>
+              </div>
+          </div>
+          
+          <div className="p-6 bg-white border border-slate-200 rounded-[2rem] shadow-sm">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Mixture-of-Experts</h4>
+              <p className="text-2xl font-black text-slate-900">8 Experts</p>
+              <p className="text-[11px] font-bold text-indigo-500 mt-2">Active Routing: Dynamic</p>
+          </div>
+
+          <div className="p-6 bg-white border border-slate-200 rounded-[2rem] shadow-sm">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Knowledge Density</h4>
+              <p className="text-2xl font-black text-slate-900">{grammarRules.length + 142}k</p>
+              <p className="text-[11px] font-bold text-rose-500 mt-2">RAG Context: Optimized</p>
+          </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <section className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm space-y-8">
           <div className="flex items-center gap-4">

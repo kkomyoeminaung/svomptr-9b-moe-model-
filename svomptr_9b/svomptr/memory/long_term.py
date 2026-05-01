@@ -3,6 +3,7 @@ import os
 import sqlite3
 import faiss
 import numpy as np
+import json
 from sentence_transformers import SentenceTransformer
 
 class LongTermMemory:
@@ -41,9 +42,29 @@ class LongTermMemory:
         base_index = faiss.IndexFlatL2(384)
         return faiss.IndexIDMap(base_index)
 
-    def add_memory(self, text):
-        """Original method for single text ingestion."""
-        self.store_memory(text)
+    def add_grammar_rule(self, english: str, correct_burmese: str, slots: dict):
+        """Specifically stores a grammatical correction as a priority rule."""
+        rule_text = f"RULE_ENG: {english} | RULE_MYA: {correct_burmese} | SLOTS: {json.dumps(slots)}"
+        self.store_memory(rule_text, metadata="grammar_correction")
+
+    def get_relevant_grammar(self, query: str) -> list:
+        """Retrieves specific grammar rules that might apply to the current query."""
+        if self.index.ntotal == 0:
+            return []
+            
+        embedding = self.encoder.encode([query]).astype('float32')
+        distances, indices = self.index.search(embedding, 5)
+        
+        rules = []
+        cursor = self.conn.cursor()
+        for idx in indices[0]:
+            if idx == -1: continue
+            cursor.execute("SELECT text FROM memory WHERE id = ?", (int(idx),))
+            row = cursor.fetchone()
+            if row and "RULE_ENG" in row[0]:
+                rules.append(row[0])
+        
+        return rules
 
     def store_memory(self, text, metadata=""):
         """Stores text with optional metadata for RAG."""
@@ -85,3 +106,19 @@ class LongTermMemory:
     def get_all_memories(self):
         cursor = self.conn.execute("SELECT text FROM memory")
         return [row[0] for row in cursor.fetchall()]
+
+    def synthesize_rules(self, batch_size=10):
+        """
+        Unsupervised Synthesis: Automatically attempts to find patterns in memories.
+        """
+        memories = self.get_all_memories()
+        if len(memories) < 5: return []
+        
+        # In a real setup, we would run a clustering or NLP summarization here.
+        # For this prototype, we'll flag any text that has consistent structural components.
+        synthesized = []
+        for m in memories:
+            if "RULE_" not in m and "Translation:" in m:
+                # Potential candidate for rule extraction
+                synthesized.append(m)
+        return synthesized

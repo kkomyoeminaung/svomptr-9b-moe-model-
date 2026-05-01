@@ -63,5 +63,31 @@ class ChatExpert(nn.Module):
             except Exception as e:
                 return f"[MoE Generation Error]: {str(e)}"
                 
-        # Simulate generation for demo/arch purposes
-        return f"Translation: {query} (Simulated Burmese Translation)\nStructure: S: Model, V: Analyzes, O: {query}"
+        # [PHASE A: REAL LOGIC FALLBACK]
+        # Instead of just a hardcoded string, we use the real parser
+        # to provide a structural analysis even without an LLM.
+        try:
+            from svomptr_9b.svomptr.core.svomptr_rules import SVOMPTRRuleEngine
+            from svomptr_9b.svomptr.core.grammar.myanmar_grammar import MyanmarGrammarHandler
+            
+            engine = SVOMPTRRuleEngine()
+            my_grammar = MyanmarGrammarHandler()
+            
+            # Clean query
+            clean_query = query.replace("<|im_start|>user\nTranslate and analyze: ", "").replace("<|im_end|>\n<|im_start|>model\n", "").strip()
+            
+            frame = engine.parse(clean_query)
+            
+            # Synthetic Burmese Translation using grammar rules if it looks like English
+            is_english = all(ord(c) < 128 for c in clean_query[:20])
+            translation = ""
+            if is_english:
+                slots = {"S": frame.S, "V": frame.V, "O": frame.O, "M": frame.M, "P": frame.P, "T": frame.T, "R": frame.R}
+                translation = my_grammar.reconstruct_sentence(slots)
+            else:
+                translation = "Analysis for Myanmar input completed."
+            
+            return f"Translation: {translation}\nStructure: S: {frame.S or '-'}, V: {frame.V or '-'}, O: {frame.O or '-'}, M: {frame.M or '-'}, P: {frame.P or '-'}, T: {frame.T or '-'}, R: {frame.R or '-'}"
+            
+        except Exception as e:
+            return f"Translation: {query} (Grammar engine error: {str(e)})\nStructure: S: Model, V: Analyzes, O: {query}"

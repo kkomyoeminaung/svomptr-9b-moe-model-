@@ -81,8 +81,27 @@ class SVOMPTRRuleEngine:
                                   "walk", "walking", "jump", "jumping", "smile", "smiling",
                                   "ပြေး", "ပြေးနေ", "ငို", "ငိုနေ", "ရယ်", "ရယ်နေ"]
         
-        # Gerund markers (can be S or O)
-        self.gerund_markers = ["ing", "နေ", "ခြင်း", "မှု"]
+        # Myanmar Grammatical Particles (S-O-V Markers)
+        self.sub_markers = ["သည်", "က", "မှာ"]
+        self.obj_markers = ["ကို", "အား", "သို့"]
+        self.verb_endings = ["သည်", "၏", "၏။", "ပါသည်", "လေသည်"]
+        
+        # Spatio-Temporal Markers
+        self.place_markers = ["at", "in", "on", "under", "below", "above", "across", "to", "from", "မြို့မှာ", "မှာ", "ထံသို့"]
+        self.time_markers = ["today", "yesterday", "tomorrow", "now", "soon", "before", "after", "နေ့က", "နေ့မှာ"]
+        
+        # Relative Clause Markers
+        self.relative_markers = ["who", "which", "that", "whom", "whose"]
+
+        # Reason Markers
+        self.reason_markers = ["because", "since", "as", "due to", "owing to", "so as to"]
+
+    def _extract_complex_slot(self, tokens: List[str], markers: List[str]) -> Optional[Tuple[int, str]]:
+        """Helper to extract phrase starting with a marker."""
+        for i, token in enumerate(tokens):
+            if token.lower() in markers:
+                return i, " ".join(tokens[i:])
+        return None
     
     def detect_sentence_type(self, tokens: List[str]) -> Tuple[SentenceType, Dict]:
         """Detect sentence type based on rules"""
@@ -202,43 +221,42 @@ class SVOMPTRRuleEngine:
         frame.S = tokens[0]
         frame.V = tokens[1]
         
-        # Check if verb is intransitive (O not needed)
+        # New Logic: Greedy P, T, R extraction from end
+        temp_tokens = tokens[2:]
+        
+        # 1. Extract Reason (R)
+        reason_info = self._extract_complex_slot(temp_tokens, self.reason_markers)
+        if not reason_info:
+             reason_info = self.has_to_infinitive(tokens, 2)
+             
+        if reason_info:
+            pos, r_text = reason_info
+            frame.R = r_text
+            temp_tokens = temp_tokens[:pos] # Shrink search space
+            
+        # 2. Extract Time (T)
+        time_info = self._extract_complex_slot(temp_tokens, self.time_markers)
+        if time_info:
+            pos, t_text = time_info
+            frame.T = t_text
+            temp_tokens = temp_tokens[:pos]
+
+        # 3. Extract Place (P)
+        place_info = self._extract_complex_slot(temp_tokens, self.place_markers)
+        if place_info:
+            pos, p_text = place_info
+            frame.P = p_text
+            temp_tokens = temp_tokens[:pos]
+
+        # 4. Remaining logic for V, O, M
         if self.is_intransitive(frame.V):
             frame.is_intransitive = True
-            remaining = tokens[2:]
-            if remaining:
-                # Check for manner or reason
-                infinitive_info = self.has_to_infinitive(tokens, 2)
-                if infinitive_info:
-                    pos, infinitive = infinitive_info
-                    frame.R = infinitive
-                    frame.has_to_infinitive = True
-                    if pos > 2:
-                        frame.M = " ".join(tokens[2:pos])
-                else:
-                    frame.M = " ".join(remaining)
+            if temp_tokens:
+                frame.M = " ".join(temp_tokens)
         else:
-            # Transitive - needs object
-            if len(tokens) > 2:
-                # Check for to-infinitive
-                infinitive_info = self.has_to_infinitive(tokens, 2)
-                if infinitive_info:
-                    pos, infinitive = infinitive_info
-                    frame.R = infinitive
-                    frame.has_to_infinitive = True
-                    # Object is before infinitive if any
-                    if pos > 2:
-                        frame.O = " ".join(tokens[2:pos])
-                else:
-                    frame.O = tokens[2]
-                    if len(tokens) > 3:
-                        frame.M = " ".join(tokens[3:])
-            else:
-                # Might be incomplete or S V only
-                pass
-        
-        # Step 7: Handle -ing as manner
-        if frame.M and self.is_ing_manner(frame.M):
-            frame.ing_is_manner = True
+            if temp_tokens:
+                frame.O = temp_tokens[0]
+                if len(temp_tokens) > 1:
+                    frame.M = " ".join(temp_tokens[1:])
         
         return frame

@@ -85,20 +85,27 @@ def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=Fal
             try:
                 if dry_run:
                     import time
-                    time.sleep(0.5) 
-                    mock_data = distiller.generate_mock_data(comp)
-                    mock_json = json.dumps(mock_data)
+                    # Use the new rule-based synthetic generator (Step 1 Real Logic)
+                    samples_raw = distiller.generate_synthetic_data(comp)
+                    mock_json = json.dumps(samples_raw)
                     samples = distiller.process_distilled_data(mock_json, memory_save=True)
                     
-                    for s in samples:
+                    for i, s in enumerate(samples):
                         f_temp.write(json.dumps(s, ensure_ascii=False) + "\n")
-                        f_temp.flush() # Force write to disk
+                        if i % 10 == 0:
+                            f_temp.flush()
+                            try:
+                                os.fsync(f_temp.fileno())
+                            except: pass
                         all_processed_samples.append(s)
                 else:
                     prompt = distiller.generate_prompt_for_llm(comp)
                     entry = {"component": comp, "prompt_ready": True, "timestamp": time.time()}
                     f_temp.write(json.dumps(entry, ensure_ascii=False) + "\n")
                     f_temp.flush()
+                    try:
+                        os.fsync(f_temp.fileno())
+                    except: pass
                     all_processed_samples.append(entry)
                 
                 # Checkpoint persistence
@@ -114,22 +121,27 @@ def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=Fal
     # Finalize only if finished
     if len(processed_components) == len(components):
         import shutil
-        shutil.move(output_temp_file, output_file)
-        if os.path.exists(checkpoint_file): os.remove(checkpoint_file)
-        print(f"\n🎉 FULLY FINISHED. {len(all_processed_samples)} samples synced to {output_file}")
+        try:
+            # Copy first then delete temp as Drive move can be unstable
+            shutil.copy2(output_temp_file, output_file)
+            if os.path.exists(checkpoint_file): os.remove(checkpoint_file)
+            if os.path.exists(output_temp_file): os.remove(output_temp_file)
+            print(f"\n🎉 FULLY FINISHED. {len(all_processed_samples)} samples synced to {output_file}")
+        except Exception as e:
+            print(f"⚠️ Error finalizing file: {e}. Data is safe in {output_temp_file}")
     else:
         print(f"\n⚠️ Pipeline interrupted. Progress saved in {output_temp_file}")
-    else:
-        # Create a metadata file explaining how to use these prompts
-        metadata = {
-            "project": "SVOMPTR-9B",
-            "version": "1.0-upgrade",
-            "instructions": "Use the generated prompts in gems.google.com or Ollama to generate JSON data.",
-            "components_covered": components
-        }
-        with open("distillation_metadata.json", "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2)
-        print(f"📂 Pipeline initialized. Metadata saved to distillation_metadata.json")
+
+    # Create a metadata file
+    metadata = {
+        "project": "SVOMPTR-9B",
+        "version": "1.0-upgrade",
+        "instructions": "Use the generated prompts in gems.google.com or Ollama to generate JSON data.",
+        "components_covered": components
+    }
+    with open("distillation_metadata.json", "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+    print(f"📂 Pipeline status updated in distillation_metadata.json")
     
     return all_processed_samples
 

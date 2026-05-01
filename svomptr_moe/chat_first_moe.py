@@ -56,14 +56,23 @@ class ChatFirstMoE(nn.Module):
         # Step 2: Route query to sub-experts
         domain_idx, confidence = self.router.get_route(query)
         
+        routing_info = {
+            "main_expert": "Neural Chat-9B",
+            "active_domain": "general",
+            "confidence": 1.0 - confidence
+        }
+
         if confidence >= self.config.router_threshold:
             domain_name = self.config.domain_names[domain_idx + 1]
+            routing_info["active_domain"] = domain_name
+            routing_info["confidence"] = confidence
             print(f"[MoE] Activating Domain Expert: {domain_name} (Conf: {confidence:.2f})")
             
             # Step 3: Domain expert generates specialized technical info
             expert_gen = self.sub_experts[domain_idx].generate(query)
             
             # Step 4: Final Merged Output
-            return self.merger.merge_responses(chat_gen, expert_gen, domain_name)
+            merged = self.merger.merge_responses(chat_gen, expert_gen, domain_name, confidence)
+            return {"text": merged, "routing": routing_info}
             
-        return chat_gen
+        return {"text": chat_gen, "routing": routing_info}

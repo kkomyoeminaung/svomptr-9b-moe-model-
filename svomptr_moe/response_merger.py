@@ -8,13 +8,21 @@ class ResponseMerger:
         # Weighted average of probabilities for token-level MoE
         return (1 - confidence) * chat_logits + confidence * expert_logits
 
-    def merge_responses(self, chat_res, expert_res, domain):
+    def merge_responses(self, chat_res, expert_res, domain, confidence):
         """
-        Fuses the general conversational response with technical domain expertise.
-        Ensures a seamless transition rather than a robotic prefix.
+        Synthesizes expert insights directly into the structural output.
         """
-        if not expert_res or domain in ["chat", "general"]:
+        if not expert_res or domain in ["chat", "general"] or confidence < 0.4:
             return chat_res
             
-        # Sophisticated fusion logic to make the response feel integrated
-        return f"{expert_res}\n\n{chat_res}"
+        # Clean up expert response from markers
+        clean_expert = expert_res.replace(f"[Domain Expert: {domain.upper()}]", "").strip()
+        
+        # Integration logic: If chat_res has SVOMPTR labels, we append insights to the specific slots
+        if "Structure: S:" in chat_res:
+            header, structure = chat_res.split("Structure:", 1)
+            # Add technical meta-context to the structure block
+            enhanced_structure = f"{structure}\nTechnical Depth ({domain.upper()}): {clean_expert}"
+            return f"{header}\n{enhanced_structure}"
+            
+        return f"{chat_res}\n\n[Refined by {domain.upper()} Specialist]: {clean_expert}"

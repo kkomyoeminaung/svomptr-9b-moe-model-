@@ -1,0 +1,6 @@
+{
+  "name": "SVOMPTR-9B Master Hub",
+  "description": "Professional ecosystem for SVOMPTR-9B: Bilingual tokenization, structural attention heads, 5M+ datasets, and RLHF/DPO alignment.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": []
+}

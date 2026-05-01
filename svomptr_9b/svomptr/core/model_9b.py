@@ -14,7 +14,7 @@ from ..reasoning.dreamer import Dreamer
 from ..layers.virtual_subject import VirtualSubjectDetector, VirtualSubjectEmbedding
 from .svomptr_rules import SVOMPTRRuleEngine
 from .svomptr_complete import SVOMPTRCompleteParser
-from svomptr_moe.experts import MoELayer
+from svomptr_9b.svomptr_moe.experts import MoELayer
 
 class SVOMPTR9B(nn.Module):
     def __init__(self, config=None):

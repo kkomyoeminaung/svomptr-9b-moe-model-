@@ -41,6 +41,7 @@ class DistillationTrainer:
             trust_remote_code=True
         )
         self.student = student_model.to(self.device)
+        self.student_vocab_size = student_model.config.vocab_size
         self.teacher.eval() # Teacher is frozen
         self.student.train()
         
@@ -54,6 +55,7 @@ class DistillationTrainer:
         batch_inputs = batch_inputs.to(self.device)
         with torch.no_grad():
             teacher_logits = self.teacher(batch_inputs).logits
+            teacher_logits = teacher_logits[:, :, :self.student_vocab_size]
         
         # Fixed Bug #5: Student model now has forward() implemented
         student_logits, _ = self.student(batch_inputs)

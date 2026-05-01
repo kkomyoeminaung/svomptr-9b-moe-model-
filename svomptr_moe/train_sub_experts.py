@@ -3,7 +3,7 @@
 
 import os
 
-def train_domain_experts():
+def train_domain_experts(model=None, train_loader=None, device=None):
     domains = ["software", "medicine", "engineering", "buddhism", "history", "science"]
     
     brain_dir = os.environ.get("SVOMPTR_BRAIN_PATH", "/content/drive/MyDrive/svomptr_brain")

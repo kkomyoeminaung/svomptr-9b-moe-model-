@@ -33,7 +33,7 @@ class DomainRouter(nn.Module):
         router_weights = os.path.join(brain_dir, "weights", "domain_router_final", "router_weights.pth")
         if os.path.exists(router_weights):
             try:
-                self.load_state_dict(torch.load(router_weights, map_location="cpu"))
+                self.classifier.load_state_dict(torch.load(router_weights, map_location="cpu"))
                 print(f"[MoE Router] Loaded semantic classifier weights from {router_weights}")
             except Exception as e:
                 print(f"[MoE Router] Failed to load custom weights: {e}")

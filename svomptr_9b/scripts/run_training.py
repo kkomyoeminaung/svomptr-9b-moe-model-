@@ -104,7 +104,7 @@ def run():
     print("\n" + "🚀"*5 + " PHASE A: DATA ENGINEERING " + "🚀"*5)
     
     # Step 1: Check Distillation Seeds
-    distill_output = "data/raw/rules.json" # Synced with DataBuilder input
+    distill_output = "data/raw/distillation_output.jsonl" # Synced with DataBuilder input
     if not os.path.exists(distill_output):
         print("💡 Step 1: No seeds found. Running Distillation Pipeline...")
         from svomptr_9b.svomptr.distillation.pipeline import run_distillation_pipeline

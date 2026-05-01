@@ -16,7 +16,8 @@ class Phase4ConversationTrainer(BaseTrainer):
         self.model.train()
         pbar = tqdm(self.train_loader, desc="Phase 4 - Chat SFT")
         for batch in pbar:
-            inputs, labels = batch['input_ids'].to(self.device), batch['labels'].to(self.device)
+            inputs = batch['input_ids'].to(self.device)
+            labels = batch.get('labels', inputs).to(self.device)
             
             self.optimizer.zero_grad()
             logits, _ = self.model(inputs)

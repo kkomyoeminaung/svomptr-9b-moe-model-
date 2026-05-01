@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-def train_router():
+def train_router(model=None, train_loader=None, device=None):
     print("Task: Training Gate/Router Weights")
     print("Dataset: Domain classification pairs (text, label)")
     print("Loss: CrossEntropyLoss + MoE Balance Loss (Expert Load Balancing)")
@@ -68,7 +68,7 @@ def train_router():
                 print(f"Epoch {epoch+1}/{epochs} - Loss: {loss.item():.4f} - Acc: {acc:.2f}")
 
         save_path = os.path.join(router_dir, "router_weights.pth")
-        torch.save(router.state_dict(), save_path)
+        torch.save(router.classifier.state_dict(), save_path)
         print(f"Router training completed successfully. Weights saved to {save_path}")
 
     except ImportError as e:

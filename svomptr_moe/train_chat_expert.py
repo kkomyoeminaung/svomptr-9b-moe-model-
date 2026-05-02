@@ -12,12 +12,20 @@ def train_chat_expert():
         from datasets import load_dataset
         import torch
         
+        # Hardware Detection & Configuration
+        is_gpu = torch.cuda.is_available()
+        device_map = "auto" if is_gpu else "cpu"
+        torch_dtype = torch.bfloat16 if is_gpu and torch.cuda.is_bf16_supported() else (torch.float16 if is_gpu else torch.float32)
+        
+        print(f"🖥️ Hardware Detection: {'🚀 GPU (Active)' if is_gpu else '🐢 CPU Mode (Fallback)'}")
+        print(f"⚙️ Computation Type: {torch_dtype}")
+
         # Check for svomptr_brain in Google Drive (if run on Colab)
         brain_dir = os.environ.get("SVOMPTR_BRAIN_PATH", "/content/drive/MyDrive/svomptr_brain")
         
         if os.path.exists(brain_dir):
             print(f"SVOMPTR Brain detected at {brain_dir}")
-            data_path = os.path.join(brain_dir, "datasets", "synthetic_5M.jsonl")
+            data_path = os.path.join(brain_dir, "datasets", "synthetic_5000000.jsonl")
             ckpt_dir = os.path.join(brain_dir, "checkpoints", "chat_expert")
             final_dir = os.path.join(brain_dir, "weights", "chat_expert_final")
             dop_dir = os.path.join(brain_dir, "dop_alignment")
@@ -33,31 +41,37 @@ def train_chat_expert():
         print("Loading base model: Qwen/Qwen2.5-1.5B-Instruct")
         model = AutoModelForCausalLM.from_pretrained(
             "Qwen/Qwen2.5-1.5B-Instruct",
-            device_map="auto",
-            torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+            device_map=device_map,
+            torch_dtype=torch_dtype,
+            trust_remote_code=True
         )
         tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct")
+        tokenizer.pad_token = tokenizer.eos_token # Fix for pad token issues
 
         if os.path.exists(data_path):
             raw_dataset = load_dataset("json", data_files=data_path)
             
             def tokenize_function(examples):
-                # Construct the prompt
-                prompts = [f"English: {en}\nSVOMPTR: " for en in examples["input"]]
-                # Construct the completion
-                targets = []
-                for t, my in zip(examples["target"], examples["myanmar"]):
-                    targets.append(f"{json.dumps(t, ensure_ascii=False)}\nMyanmar: {my}")
+                # Construct ChatML format sequences
+                texts = []
+                for en, s, my in zip(examples["input"], examples["target"], examples["myanmar"]):
+                    # Handle different schema naming if necessary
+                    struct = f"S:{s.get('S','')}|V:{s.get('V','')}|O:{s.get('O','')}"
+                    text = f"<|im_start|>user\nTranslate: {en}<|im_end|>\n<|im_start|>assistant\n{my} (Structure: {struct})<|im_end|>"
+                    texts.append(text)
                 
-                inputs = [p + t for p, t in zip(prompts, targets)]
-                model_inputs = tokenizer(inputs, max_length=512, truncation=True, padding="max_length")
+                model_inputs = tokenizer(texts, max_length=512, truncation=True, padding="max_length")
                 
-                # Setup labels for causal LM training (predict only the target part)
+                # Setup labels for causal LM training (mask inputs)
                 labels = model_inputs["input_ids"].copy()
-                # We should mask the prompt part in labels
-                for i, p in enumerate(prompts):
-                    p_ids = tokenizer(p, add_special_tokens=False)["input_ids"]
-                    labels[i][:len(p_ids)] = -100 # Ignore prompt in loss
+                for i, text in enumerate(texts):
+                    # Mask everything up to and including the assistant start token
+                    assistant_marker = "<|im_start|>assistant\n"
+                    parts = text.split(assistant_marker)
+                    if len(parts) > 1:
+                        prompt_part = parts[0] + assistant_marker
+                        prompt_ids = tokenizer(prompt_part, add_special_tokens=False)["input_ids"]
+                        labels[i][:len(prompt_ids)] = -100
                 
                 model_inputs["labels"] = labels
                 return model_inputs
@@ -70,16 +84,18 @@ def train_chat_expert():
             
             training_args = TrainingArguments(
                 output_dir=ckpt_dir,
-                num_train_epochs=3,
-                per_device_train_batch_size=8,
-                gradient_accumulation_steps=4,
-                learning_rate=2e-5,
+                num_train_epochs=1, # 5M samples usually only need 1 epoch for distillation
+                per_device_train_batch_size=4,
+                gradient_accumulation_steps=8,
+                learning_rate=1e-5,
+                save_strategy="steps",
                 save_steps=1000,
                 logging_steps=100,
                 bf16=torch.cuda.is_bf16_supported(),
                 fp16=not torch.cuda.is_bf16_supported(),
-                save_total_limit=3, # Prevent disk overflow, keep last 3
-                report_to="none"
+                save_total_limit=2,
+                report_to="none",
+                resume_from_checkpoint=True
             )
             trainer = Trainer(
                 model=model,

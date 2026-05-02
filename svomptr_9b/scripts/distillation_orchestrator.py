@@ -54,41 +54,29 @@ def orchestrate():
             os.makedirs(path, exist_ok=True)
             print(f"📁 Created directory: {path}")
             
-    dataset_file = os.path.join(brain_dir, 'datasets', 'synthetic_5M.jsonl')
+    dataset_file = os.path.join(brain_dir, 'datasets', 'synthetic_5000000.jsonl')
     
     # Phase 1: High-Speed Generation via vLLM
     print_banner("PHASE 1: Dataset Generation (High-Speed vLLM)")
     
-    # In Colab, we should prioritize check-pointing
     try:
-        from svomptr.distillation.pipeline import run_distillation_pipeline
-        
-        print(f"🛠️ Starting Data Distillation Pipeline...")
-        # use_vllm=True trigger high-quality synthetic data generation
-        run_distillation_pipeline(
-            output_file=dataset_file, 
-            dry_run=False, 
-            use_vllm=True
-        )
-        
+        # We run the specific script to ensure standard behavior
+        print(f"🛠️ Executing Standalone Generator: python3 /generate_data.py")
+        subprocess.run([sys.executable, "/generate_data.py"], check=True)
+        print("✅ Data Generation Phase Finished.")
     except Exception as e:
         print(f"🛑 Generation Phase Interrupted: {e}")
-        print("💡 Suggestion: Check if GPU memory is full or Drive space is low.")
         return
 
     # Phase 2 & 3: Distillation & DOP Alignment
     print_banner("PHASE 2 & 3: Model Training & DOP Alignment")
-    if os.path.exists(dataset_file):
-        try:
-            from svomptr_moe.train_chat_expert import train_chat_expert
-            # This script handles both training and saving the DOP signature to Drive.
-            train_chat_expert()
-            print("✅ Model Training & DOP Alignment Complete.")
-        except Exception as e:
-            print(f"🛑 Training Phase Failed: {e}")
-            return
-    else:
-        print("🛑 Error: Dataset file missing. Training cannot proceed.")
+    try:
+        print(f"🛠️ Executing Standalone Trainer: python3 /train_distillation.py")
+        subprocess.run([sys.executable, "/train_distillation.py"], check=True)
+        print("✅ Model Training & DOP Alignment Finished.")
+    except Exception as e:
+        print(f"🛑 Training Phase Failed: {e}")
+        return
 
     print_banner("✨ SVOMPTR-9B FULL PIPELINE COMPLETED ✨")
     print(f"📦 Final Model Saved to: {os.path.join(brain_dir, 'weights', 'chat_expert_final')}")

@@ -22,24 +22,27 @@ class GrammarDistiller:
         rules = self._get_rules_by_component(component_name)
         
         prompt = f"""
-        Role: Senior Linguistics Expert (English-Myanmar Specialist)
-        Task: Generate {count} diverse sentences focusing on the grammar component: "{component_name}".
+        Role: Master Linguist & Translation Expert
+        Task: Synthesize {count} extremely high-quality, complex training samples for the grammar component: "{component_name}".
         
-        Grammar Rules/Reference:
+        Reference Rules:
         {json.dumps(rules, indent=2, ensure_ascii=False)}
         
-        Requirements:
-        1. Context: Real-world conversation, academic, or professional usage.
-        2. Bilingual: Provide the English sentence and its natural Myanmar (Burmese) translation.
-        3. Burmese Nuances: Use correct particles (e.g., -တယ်, -နေတယ်, -ခဲ့တယ်) and honorifics where appropriate.
-        4. No explanation: Just the JSON data.
-        5. Format: Return ONLY a valid JSON list of objects:
+        Quality Guidelines:
+        1. Diversity: Vary sentence length, vocabulary (casual to formal), and subject matter.
+        2. Complexity: Avoid "The cat is on the mat". Use multi-clause sentences, phrasal verbs, and idiomatic expressions.
+        3. Burmese Accuracy: Translations must be natural and standard Burmese (Social/Polite style). Use correct sentence-final particles (-တယ်, -ပါသည်, -ခဲ့သည်).
+        4. No Duplication: Ensure each of the {count} sentences is distinct in structure.
+        
+        Strict JSON Output Format:
         [
-          {{"en": "...", "my": "...", "sentence": "...", "component": "{component_name}"}},
+          {{"en": "English sentence", "my": "Natural Myanmar translation", "component": "{component_name}"}},
           ...
         ]
+        
+        Output ONLY the JSON list. No preamble. No markdown blocks.
         """
-        return prompt
+        return prompt.strip()
 
     def generate_synthetic_data(self, component: str, count: int = 5):
         """

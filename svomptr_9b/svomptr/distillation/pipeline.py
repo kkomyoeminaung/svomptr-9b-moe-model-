@@ -3,26 +3,28 @@
 import os
 import json
 import time
+from datetime import datetime
 from .grammar_distiller import GrammarDistiller
 from .vllm_generator import VLLMGenerator
 from ..memory.long_term import LongTermMemory
 
-def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=False, use_vllm=False):
+def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=False, use_vllm=False, target_total_samples=5000000):
     """
     Main pipeline to orchestrate knowledge distillation.
-    dry_run=True: Uses mock rule-based logic.
-    use_vllm=True: Uses vLLM to generate high-quality synthetic data.
+    target_total_samples: Target number of samples to reach.
     """
     memory = LongTermMemory() if not dry_run or os.getenv("ENABLE_TEST_MEMORY") else None
     distiller = GrammarDistiller(memory=memory)
     vllm_gen = None
-    
-    if use_vllm and not dry_run:
-        try:
+    try:
+        # We always try to initialize VLLMGenerator if not explicitly doing a dry_run
+        # It internally handles the fallback from vLLM (GPU) to Transformers (CPU/GPU)
+        if not dry_run:
             vllm_gen = VLLMGenerator()
-        except Exception as e:
-            print(f"⚠️ vLLM failed to initialize: {e}. Falling back to prompt-only mode.")
-            use_vllm = False
+    except Exception as e:
+        print(f"⚠️ Generator initialization failed: {e}. Falling back to rule-based generation.")
+    
+    actual_use_gpu = vllm_gen.use_vllm if vllm_gen else False
     
     components = [
         "tense", "voice", "conditional", "reported_speech", 
@@ -37,138 +39,97 @@ def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=Fal
         "gerunds", "infinitives", "participles"
     ]
     
-    output_dir = os.path.dirname(output_file)
-    if output_dir and not os.path.exists(output_dir):
-        os.makedirs(output_dir, exist_ok=True)
-    
-    from tqdm import tqdm
-    print(f"🚀 SVOMPTR Knowledge Distillation Pipeline {'(DRY RUN)' if dry_run else ''}")
-    
-    # Checkpoint support
-    checkpoint_file = os.path.join(output_dir, "distillation_status.json") if output_dir else "distillation_status.json"
     output_temp_file = output_file + ".tmp"
-    processed_components = []
-    all_processed_samples = []
-
-    # 1. Environment Health Check
-    if output_dir:
-        try:
-            test_file = os.path.join(output_dir, ".write_test")
-            with open(test_file, "w") as f: f.write("ok")
-            os.remove(test_file)
-            print("✅ Storage access verified.")
-        except Exception as e:
-            print(f"❌ CRITICAL ERROR: Cannot write to {output_dir}. Please check your Drive mount!")
-            return
-
+    checkpoint_file = output_file + ".ckpt.json"
+    
+    # 1. Load Progress
+    progress = {"total_samples": 0, "component_index": 0}
     if os.path.exists(checkpoint_file):
         try:
-            with open(checkpoint_file, "r", encoding="utf-8") as f:
-                ckpt_data = json.load(f)
-                processed_components = ckpt_data.get("processed", [])
-                print(f"🔄 Resuming: {len(processed_components)} components already finished.")
+            with open(checkpoint_file, "r") as f:
+                progress = json.load(f)
+                print(f"🔄 Resuming from checkpoint: {progress['total_samples']} samples collected.")
         except: pass
 
-    # Restore existing samples
-    if os.path.exists(output_temp_file):
-        try:
-            with open(output_temp_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    if line.strip():
-                        all_processed_samples.append(json.loads(line))
-            print(f"📦 Restored {len(all_processed_samples)} samples from temp file.")
-        except: pass
-
-    remaining_components = [c for c in components if c not in processed_components]
-    if not remaining_components:
-        print("✅ Pipeline already completed for all components.")
-        return
-
-    print(f"Target Components: {len(remaining_components)} remaining out of {len(components)}")
+    # 2. Main Loop
+    current_samples = progress['total_samples']
+    comp_idx = progress['component_index']
     
-    pbar = tqdm(remaining_components, desc="Distillation Progress")
+    from tqdm import tqdm
+    pbar = tqdm(total=target_total_samples, initial=current_samples, desc="🚀 SVOMPTR Synthetic Generation")
     
-    # Use unbuffered writing (flushing) to ensure Drive gets the data immediately
-    with open(output_temp_file, "a", encoding="utf-8", buffering=1) as f_temp:
-        for comp in pbar:
-            pbar.set_postfix({"current": comp})
-            try:
-                if dry_run:
-                    import time
-                    # Use the new rule-based synthetic generator (Step 1 Real Logic)
-                    samples_raw = distiller.generate_synthetic_data(comp)
-                    mock_json = json.dumps(samples_raw)
-                    samples = distiller.process_distilled_data(mock_json, memory_save=True)
-                    
-                    for i, s in enumerate(samples):
-                        f_temp.write(json.dumps(s, ensure_ascii=False) + "\n")
-                        if i % 10 == 0:
-                            f_temp.flush()
-                            try:
-                                os.fsync(f_temp.fileno())
-                            except: pass
-                        all_processed_samples.append(s)
-                elif use_vllm and vllm_gen:
-                    print(f"📡 Requesting vLLM to generate data for: {comp}")
-                    prompt = distiller.generate_prompt_for_llm(comp, count=20) # Generate 20 samples per component
-                    llm_outputs = vllm_gen.generate_batch([prompt])
-                    
-                    for output_text in llm_outputs:
-                        samples = distiller.process_distilled_data(output_text, memory_save=True)
-                        for s in samples:
-                            f_temp.write(json.dumps(s, ensure_ascii=False) + "\n")
-                            all_processed_samples.append(s)
-                    
-                    f_temp.flush()
-                    try:
-                        os.fsync(f_temp.fileno())
-                    except: pass
-                else:
-                    prompt = distiller.generate_prompt_for_llm(comp)
-                    entry = {"component": comp, "prompt_ready": True, "timestamp": time.time()}
-                    f_temp.write(json.dumps(entry, ensure_ascii=False) + "\n")
-                    f_temp.flush()
-                    try:
-                        os.fsync(f_temp.fileno())
-                    except: pass
-                    all_processed_samples.append(entry)
-                
-                # Checkpoint persistence
-                processed_components.append(comp)
-                with open(checkpoint_file, "w", encoding="utf-8") as f_ckpt:
-                    json.dump({"processed": processed_components, "total_samples": len(all_processed_samples)}, f_ckpt)
+    with open(output_temp_file, "a", encoding="utf-8", buffering=1) as f_out:
+        while current_samples < target_total_samples:
+            comp = components[comp_idx % len(components)]
+            pbar.set_description(f"📉 Generating: {comp}")
             
+            # Generate a batch - Dynamically scale based on hardware
+            if actual_use_gpu:
+                num_prompts = 5
+                batch_size_per_prompt = 10
+            elif vllm_gen: # CPU Transformers mode
+                num_prompts = 1
+                batch_size_per_prompt = 5
+            else: # Rule-based / dry_run
+                num_prompts = 1
+                batch_size_per_prompt = 5
+            
+            try:
+                samples = []
+                if vllm_gen:
+                    # High quality LLM generation (GPU vLLM or CPU Transformers)
+                    prompts = [distiller.generate_prompt_for_llm(comp, count=batch_size_per_prompt) for _ in range(num_prompts)]
+                    outputs = vllm_gen.generate_batch(prompts)
+                    for out in outputs:
+                        samples.extend(distiller.process_distilled_data(out, memory_save=True))
+                else:
+                    # Rule-based synthetic generation
+                    samples = distiller.generate_synthetic_data(comp, count=batch_size_per_prompt)
+                    samples = distiller.process_distilled_data(json.dumps(samples), memory_save=True)
+
+                if not samples:
+                    print(f"⚠️ No samples generated for {comp}. Skipping...")
+                    comp_idx += 1
+                    continue
+
+                # Save samples
+                for s in samples:
+                    f_out.write(json.dumps(s, ensure_ascii=False) + "\n")
+                    current_samples += 1
+                
+                f_out.flush()
+                try: os.fsync(f_out.fileno())
+                except: pass
+                
+                # Update progress
+                comp_idx += 1
+                pbar.update(len(samples))
+                
+                # Save Checkpoint
+                with open(checkpoint_file, "w") as f_ckpt:
+                    json.dump({
+                        "total_samples": current_samples,
+                        "component_index": comp_idx,
+                        "timestamp": time.time()
+                    }, f_ckpt)
+                
+                # Check for session timeout prevention (Colab)
+                if current_samples % 500 < len(samples):
+                     print(f"💓 [HEARTBEAT] {datetime.now().strftime('%H:%M:%S')} | Progress: {current_samples}/{target_total_samples}")
+
             except Exception as e:
-                print(f"\n🛑 Error at component {comp}: {e}")
-                print("⚠️ Stopping pipeline to prevent data corruption. Please fix and restart.")
-                return # Stop immediately on error
+                print(f"🛑 Error during generation: {e}")
+                break
 
-    # Finalize only if finished
-    if len(processed_components) == len(components):
+    # 3. Finalize
+    if current_samples >= target_total_samples:
         import shutil
-        try:
-            # Copy first then delete temp as Drive move can be unstable
-            shutil.copy2(output_temp_file, output_file)
-            if os.path.exists(checkpoint_file): os.remove(checkpoint_file)
-            if os.path.exists(output_temp_file): os.remove(output_temp_file)
-            print(f"\n🎉 FULLY FINISHED. {len(all_processed_samples)} samples synced to {output_file}")
-        except Exception as e:
-            print(f"⚠️ Error finalizing file: {e}. Data is safe in {output_temp_file}")
+        shutil.copy2(output_temp_file, output_file)
+        print(f"✅ Target reached! Dataset saved to {output_file}")
     else:
-        print(f"\n⚠️ Pipeline interrupted. Progress saved in {output_temp_file}")
-
-    # Create a metadata file
-    metadata = {
-        "project": "SVOMPTR-9B",
-        "version": "1.0-upgrade",
-        "instructions": "Use the generated prompts in gems.google.com or Ollama to generate JSON data.",
-        "components_covered": components
-    }
-    with open("distillation_metadata.json", "w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=2)
-    print(f"📂 Pipeline status updated in distillation_metadata.json")
+        print(f"⚠️ Pipeline session ended at {current_samples} samples. Data is safe in {output_temp_file}. Run again to resume.")
     
-    return all_processed_samples
+    return current_samples
 
 if __name__ == "__main__":
     # Logical check: Run in dry_run mode by default for verification

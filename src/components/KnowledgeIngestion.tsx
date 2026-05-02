@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Upload, Link, Loader2, BrainCircuit, Download, Settings, Database } from 'lucide-react';
 import { motion } from 'framer-motion';
+import DatasetDownloader from './DatasetDownloader';
 
 export default function KnowledgeIngestion() {
   const [file, setFile] = useState<File | null>(null);
@@ -341,6 +342,7 @@ export default function KnowledgeIngestion() {
                 >
                     Download Phase-3 (Live Inference Server)
                 </a>
+                <DatasetDownloader />
               </div>
           </div>
         </section>

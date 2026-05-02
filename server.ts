@@ -267,6 +267,22 @@ async function startServer() {
     }
   });
 
+  // Dataset Download Endpoint
+  app.get("/api/download-dataset", (req, res) => {
+    const datasetPath = path.join(__dirname, "notebooks", "data", "synthetic_1M_high_quality.jsonl");
+    if (fs.existsSync(datasetPath)) {
+        res.download(datasetPath, "synthetic_1M_high_quality.jsonl");
+    } else {
+        // Try looking in default DATA_DIR too
+        const alternativePath = path.join(DATA_DIR, "synthetic_1M_high_quality.jsonl");
+        if (fs.existsSync(alternativePath)) {
+            res.download(alternativePath, "synthetic_1M_high_quality.jsonl");
+        } else {
+            res.status(404).send("Dataset file not found. Ensure the notebook has finished generating it.");
+        }
+    }
+  });
+
   // Colab Inference Download Endpoint
   app.get("/api/download-inference", (req, res) => {
     const colabPath = path.join(__dirname, "notebooks", "SVOMPTR_9B_Colab_Inference_Only.ipynb");

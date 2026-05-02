@@ -4,16 +4,25 @@ import os
 import json
 import time
 from .grammar_distiller import GrammarDistiller
+from .vllm_generator import VLLMGenerator
 from ..memory.long_term import LongTermMemory
 
-def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=False):
+def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=False, use_vllm=False):
     """
     Main pipeline to orchestrate knowledge distillation.
-    dry_run=True: Uses mock data to simulate end-to-end processing.
+    dry_run=True: Uses mock rule-based logic.
+    use_vllm=True: Uses vLLM to generate high-quality synthetic data.
     """
-    # Shared memory instance for 100% performance optimization
     memory = LongTermMemory() if not dry_run or os.getenv("ENABLE_TEST_MEMORY") else None
     distiller = GrammarDistiller(memory=memory)
+    vllm_gen = None
+    
+    if use_vllm and not dry_run:
+        try:
+            vllm_gen = VLLMGenerator()
+        except Exception as e:
+            print(f"⚠️ vLLM failed to initialize: {e}. Falling back to prompt-only mode.")
+            use_vllm = False
     
     components = [
         "tense", "voice", "conditional", "reported_speech", 
@@ -99,6 +108,21 @@ def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=Fal
                                 os.fsync(f_temp.fileno())
                             except: pass
                         all_processed_samples.append(s)
+                elif use_vllm and vllm_gen:
+                    print(f"📡 Requesting vLLM to generate data for: {comp}")
+                    prompt = distiller.generate_prompt_for_llm(comp, count=20) # Generate 20 samples per component
+                    llm_outputs = vllm_gen.generate_batch([prompt])
+                    
+                    for output_text in llm_outputs:
+                        samples = distiller.process_distilled_data(output_text, memory_save=True)
+                        for s in samples:
+                            f_temp.write(json.dumps(s, ensure_ascii=False) + "\n")
+                            all_processed_samples.append(s)
+                    
+                    f_temp.flush()
+                    try:
+                        os.fsync(f_temp.fileno())
+                    except: pass
                 else:
                     prompt = distiller.generate_prompt_for_llm(comp)
                     entry = {"component": comp, "prompt_ready": True, "timestamp": time.time()}

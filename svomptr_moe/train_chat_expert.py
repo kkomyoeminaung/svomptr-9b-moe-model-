@@ -39,7 +39,34 @@ def train_chat_expert():
         tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct")
 
         if os.path.exists(data_path):
-            dataset = load_dataset("json", data_files=data_path)
+            raw_dataset = load_dataset("json", data_files=data_path)
+            
+            def tokenize_function(examples):
+                # Construct the prompt
+                prompts = [f"English: {en}\nSVOMPTR: " for en in examples["input"]]
+                # Construct the completion
+                targets = []
+                for t, my in zip(examples["target"], examples["myanmar"]):
+                    targets.append(f"{json.dumps(t, ensure_ascii=False)}\nMyanmar: {my}")
+                
+                inputs = [p + t for p, t in zip(prompts, targets)]
+                model_inputs = tokenizer(inputs, max_length=512, truncation=True, padding="max_length")
+                
+                # Setup labels for causal LM training (predict only the target part)
+                labels = model_inputs["input_ids"].copy()
+                # We should mask the prompt part in labels
+                for i, p in enumerate(prompts):
+                    p_ids = tokenizer(p, add_special_tokens=False)["input_ids"]
+                    labels[i][:len(p_ids)] = -100 # Ignore prompt in loss
+                
+                model_inputs["labels"] = labels
+                return model_inputs
+
+            tokenized_dataset = raw_dataset["train"].map(
+                tokenize_function, 
+                batched=True, 
+                remove_columns=raw_dataset["train"].column_names
+            )
             
             training_args = TrainingArguments(
                 output_dir=ckpt_dir,
@@ -57,7 +84,7 @@ def train_chat_expert():
             trainer = Trainer(
                 model=model,
                 args=training_args,
-                train_dataset=dataset['train'],
+                train_dataset=tokenized_dataset,
                 tokenizer=tokenizer,
             )
             

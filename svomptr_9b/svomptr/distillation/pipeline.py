@@ -20,7 +20,7 @@ def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=Fal
         # We always try to initialize VLLMGenerator if not explicitly doing a dry_run
         # It internally handles the fallback from vLLM (GPU) to Transformers (CPU/GPU)
         if not dry_run:
-            vllm_gen = VLLMGenerator()
+            vllm_gen = VLLMGenerator(force_vllm=use_vllm)
     except Exception as e:
         print(f"⚠️ Generator initialization failed: {e}. Falling back to rule-based generation.")
     
@@ -114,8 +114,12 @@ def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=Fal
                     }, f_ckpt)
                 
                 # Check for session timeout prevention (Colab)
-                if current_samples % 500 < len(samples):
+                if not hasattr(run_distillation_pipeline, "_last_heartbeat"):
+                    run_distillation_pipeline._last_heartbeat = time.time()
+                
+                if time.time() - run_distillation_pipeline._last_heartbeat > 60:
                      print(f"💓 [HEARTBEAT] {datetime.now().strftime('%H:%M:%S')} | Progress: {current_samples}/{target_total_samples}")
+                     run_distillation_pipeline._last_heartbeat = time.time()
 
             except Exception as e:
                 print(f"🛑 Error during generation: {e}")

@@ -63,7 +63,8 @@ def train_chat_expert():
                 model_inputs = tokenizer(texts, max_length=512, truncation=True, padding="max_length")
                 
                 # Setup labels for causal LM training (mask inputs)
-                labels = model_inputs["input_ids"].copy()
+                import copy
+                labels = copy.deepcopy(model_inputs["input_ids"])
                 for i, text in enumerate(texts):
                     # Mask everything up to and including the assistant start token
                     assistant_marker = "<|im_start|>assistant\n"
@@ -94,8 +95,7 @@ def train_chat_expert():
                 bf16=torch.cuda.is_bf16_supported(),
                 fp16=not torch.cuda.is_bf16_supported(),
                 save_total_limit=2,
-                report_to="none",
-                resume_from_checkpoint=True
+                report_to="none"
             )
             trainer = Trainer(
                 model=model,

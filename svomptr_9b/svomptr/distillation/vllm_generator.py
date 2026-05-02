@@ -16,8 +16,8 @@ class VLLMGenerator:
     High-performance Synthetic Data Generator.
     Supports vLLM (GPU) with graceful fallback to Transformers (CPU/GPU).
     """
-    def __init__(self, model_name: str = "Qwen/Qwen2.5-7B-Instruct", gpu_memory_utilization: float = 0.9):
-        self.use_vllm = VLLM_AVAILABLE and torch.cuda.is_available()
+    def __init__(self, model_name: str = "Qwen/Qwen2.5-7B-Instruct", gpu_memory_utilization: float = 0.75, force_vllm: bool = False):
+        self.use_vllm = (VLLM_AVAILABLE and torch.cuda.is_available()) or force_vllm
         self.model_name = model_name
         
         if self.use_vllm:
@@ -27,8 +27,8 @@ class VLLMGenerator:
                     model=model_name, 
                     gpu_memory_utilization=gpu_memory_utilization,
                     trust_remote_code=True,
-                    dtype="bfloat16",
-                    max_model_len=4096
+                    dtype="bfloat16" if torch.cuda.is_bf16_supported() else "float16",
+                    max_model_len=2048
                 )
                 self.sampling_params = SamplingParams(
                     temperature=0.7,

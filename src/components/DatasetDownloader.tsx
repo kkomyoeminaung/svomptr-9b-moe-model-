@@ -14,7 +14,7 @@ export default function DatasetDownloader() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'synthetic_1M_high_quality.jsonl';
+      a.download = 'synthetic_100k_high_quality.jsonl';
       document.body.appendChild(a);
       a.click();
       a.remove();

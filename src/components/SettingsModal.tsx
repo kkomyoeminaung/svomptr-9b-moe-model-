@@ -120,7 +120,41 @@ export function SettingsModal({
               </AnimatePresence>
 
               <div className="space-y-3 pt-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1">Maintenance</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1">Maintenance & Assets</label>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  <a 
+                    href="/api/download-colab" 
+                    className="flex items-center justify-center gap-2 p-3 text-[10px] font-black uppercase text-slate-600 bg-slate-50 border border-slate-100 rounded-xl hover:bg-white transition-all shadow-sm"
+                  >
+                    Training Note
+                  </a>
+                  <a 
+                    href="/api/download-inference" 
+                    className="flex items-center justify-center gap-2 p-3 text-[10px] font-black uppercase text-slate-600 bg-slate-50 border border-slate-100 rounded-xl hover:bg-white transition-all shadow-sm"
+                  >
+                    Inference Note
+                  </a>
+                  <a 
+                    href="/api/download-distillation" 
+                    className="flex items-center justify-center gap-2 p-3 text-[10px] font-black uppercase text-slate-600 bg-slate-50 border border-slate-100 rounded-xl hover:bg-white transition-all shadow-sm"
+                  >
+                    Distill Note
+                  </a>
+                  <a 
+                    href="/api/export-training-data" 
+                    className="flex items-center justify-center gap-2 p-3 text-[10px] font-black uppercase text-blue-600 bg-blue-50 border border-blue-100 rounded-xl hover:bg-white transition-all shadow-sm"
+                  >
+                    Sync Feedback
+                  </a>
+                  <a 
+                    href="/api/package-project" 
+                    className="col-span-2 flex items-center justify-center gap-2 p-3 text-[10px] font-black uppercase text-white bg-slate-900 border border-slate-800 rounded-xl hover:bg-slate-800 transition-all shadow-lg active:scale-[0.98]"
+                  >
+                    Download Project (ZIP)
+                  </a>
+                </div>
+
                 <button
                   onClick={async () => {
                     if (window.confirm("Are you sure you want to clear all neural history? This cannot be undone.")) {

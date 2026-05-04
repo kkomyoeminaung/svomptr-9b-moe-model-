@@ -18,17 +18,27 @@ class SubExpert(nn.Module):
         import os
         if model_path is None:
             brain_dir = os.environ.get("SVOMPTR_BRAIN_PATH", "/content/drive/MyDrive/svomptr_brain")
+            auto_train_dir = "/content/drive/MyDrive/svomptr_auto_train"
+            
             brain_model_path = os.path.join(brain_dir, "weights", "sub_experts", domain)
+            auto_model_path = os.path.join(auto_train_dir, "checkpoints", domain) # Experts often saved in checkpoints
+            
             if os.path.exists(brain_model_path):
                 model_path = brain_model_path
+            elif os.path.exists(auto_model_path):
+                model_path = auto_model_path
 
         if model_path:
             try:
                 from transformers import pipeline
+                import torch
+                
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                
                 self.pipe = pipeline("text-generation", 
                                      model=model_path, 
-                                     torch_dtype="auto", 
-                                     device_map="auto")
+                                     torch_dtype="auto" if device == "cuda" else torch.float32, 
+                                     device_map="auto" if device == "cuda" else None)
                 print(f"[MoE] {domain.capitalize()} Expert loaded: {model_path}")
             except Exception as e:
                 print(f"[MoE] {domain.capitalize()} Expert init failed: {e}")

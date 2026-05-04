@@ -1,7 +1,7 @@
 import torch
 from .chat_first_moe import ChatFirstMoE
 from .config import MoEConfig
-from ..svomptr.memory.long_term import LongTermMemory
+from svomptr.memory.long_term import LongTermMemory
 import re
 
 class ChatFirstInference:
@@ -31,9 +31,10 @@ class ChatFirstInference:
         for rule in relevant_rules:
             if "RULE_ENG" in rule:
                 parts = rule.split("|")
-                eng = parts[0].replace("RULE_ENG:", "").strip()
+                eng = parts[0].replace("RULE_ENG:", "").replace("USER FEEDBACK:", "").strip()
                 mya = parts[1].replace("RULE_MYA:", "").strip()
-                rule_map[eng.lower()] = mya
+                if eng:
+                    rule_map[eng.lower()] = mya
 
         rule_prompt = ""
         if relevant_rules:
@@ -48,7 +49,8 @@ class ChatFirstInference:
                 "routing": {"main_expert": "Evolutionary Optimizer", "active_domain": "self_update", "confidence": 1.0}
             }
 
-        formatted_prompt = f"<|im_start|>system\nYou are SVOMPTR-9B Recursive Agent. Verify output against Constraints.{rule_prompt}<|im_end|>\n<|im_start|>user\nTranslate and analyze: {prompt}<|im_end|>\n<|im_start|>model\n"
+        # Standardized Gold Template (Matches Training Pipeline)
+        formatted_prompt = f"<|im_start|>system\nEnglish-to-Myanmar SVOMPTR Transformer Expert.{rule_prompt}<|im_end|>\n<|im_start|>user\nTranslate: {prompt}<|im_end|>\n<|im_start|>assistant\n"
         
         # 3. Execution with Self-Refinement (Recursive Loop)
         moe_result = self.moe.generate(formatted_prompt)
@@ -75,31 +77,32 @@ class ChatFirstInference:
             routing_info["critique"] = refinement_log[0]
 
         generation = result_text
-        if "<|im_start|>model\n" in result_text:
-            generation = result_text.split("<|im_start|>model\n")[-1].strip()
+        if "<|im_start|>assistant\n" in result_text:
+            generation = result_text.split("<|im_start|>assistant\n")[-1].strip()
         
         # Determine SVOMPTR frame
         frame = { "S": "-", "V": "-", "O": "-", "M": "-", "P": "-", "T": "-", "R": "-" }
         
-        # Parse output mapping "Translation:" and "Structure: S:..., V:..., O:..."
-        translation = generation
+        # Robust Regex Parsing (Neural Pattern Matching)
+        # Matches formats like S:Value, V=Value, O-Value across the entire output
+        found_components = re.findall(r'([SVOMPTR])\s*[:|-|=]\s*(.*?)(?=[SVOMPTR]\s*[:|-|=]|$|\n)', generation)
         
+        for k, v in found_components:
+            k_clean = k.strip()
+            if k_clean in frame:
+                # Clean up the value from trailing delimiters and excessive whitespace
+                v_clean = v.strip().strip(',').strip('|').strip(')').strip('(')
+                frame[k_clean] = v_clean
+
+        # Clean up response text if it contains the raw structure block
+        translation = generation
         if "Structure:" in generation:
-            parts = generation.split("Structure:", 1)
-            translation = parts[0].replace("Translation:", "").strip()
-            structure_str = parts[1].strip()
-            
-            # Simple extractor for S, V, O etc.
-            pairs = [p.strip() for p in structure_str.split(",")]
-            for p in pairs:
-                if ":" in p:
-                    k, v = p.split(":", 1)
-                    k = k.strip()
-                    if k in frame:
-                        frame[k] = v.strip()
-                        
+            translation = generation.split("Structure:")[0].replace("Translation:", "").strip()
         elif "Translation:" in generation:
             translation = generation.replace("Translation:", "").strip()
+            # If structure was inside the translation line, we already parsed it into frame
+            # so we can strip it from the main response for a cleaner UI
+            translation = re.sub(r'[SVOMPTR]\s*[:|-|=].*', '', translation).strip()
 
         return {
             "response": translation,

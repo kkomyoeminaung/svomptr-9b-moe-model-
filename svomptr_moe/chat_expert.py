@@ -16,18 +16,30 @@ class ChatExpert(nn.Module):
         import os
         if model_path is None:
             brain_dir = os.environ.get("SVOMPTR_BRAIN_PATH", "/content/drive/MyDrive/svomptr_brain")
+            auto_train_dir = "/content/drive/MyDrive/svomptr_auto_train"
+            
             brain_model_path = os.path.join(brain_dir, "weights", "chat_expert_final")
+            auto_model_path = os.path.join(auto_train_dir, "final_lora_weights")
+            
             if os.path.exists(brain_model_path):
                 model_path = brain_model_path
+            elif os.path.exists(auto_model_path):
+                model_path = auto_model_path
             else:
                 model_path = "Qwen/Qwen2.5-1.5B-Instruct"
 
         try:
             from transformers import pipeline
+            import torch
+            
+            # Auto-detect device
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            print(f"[MoE] Chat Expert detecting device: {device}")
+            
             self.pipe = pipeline("text-generation", 
                                  model=model_path, 
-                                 torch_dtype="auto", 
-                                 device_map="auto")
+                                 torch_dtype="auto" if device == "cuda" else torch.float32, 
+                                 device_map="auto" if device == "cuda" else None)
             print(f"[MoE] Chat Expert loaded: {model_path}")
         except Exception as e:
             print(f"[MoE] Chat Expert init failed (missing transformers?): {e}")
@@ -57,9 +69,10 @@ class ChatExpert(nn.Module):
                     max_new_tokens=max_tokens,
                     temperature=0.7,
                     top_p=0.9,
-                    do_sample=True
+                    do_sample=True,
+                    return_full_text=False # Critical: Prevents string matching bugs and saves bandwidth
                 )
-                return result[0]['generated_text']
+                return "<|im_start|>assistant\n" + result[0]['generated_text'] # Prefix it safely to match inference_chat_first parser logic
             except Exception as e:
                 return f"[MoE Generation Error]: {str(e)}"
                 
@@ -74,7 +87,7 @@ class ChatExpert(nn.Module):
             my_grammar = MyanmarGrammarHandler()
             
             # Clean query
-            clean_query = query.replace("<|im_start|>user\nTranslate and analyze: ", "").replace("<|im_end|>\n<|im_start|>model\n", "").strip()
+            clean_query = query.replace("<|im_start|>user\nTranslate: ", "").replace("<|im_end|>\n<|im_start|>assistant\n", "").replace("<|im_start|>user\nTranslate and analyze: ", "").replace("<|im_end|>\n<|im_start|>model\n", "").strip()
             
             frame = engine.parse(clean_query)
             

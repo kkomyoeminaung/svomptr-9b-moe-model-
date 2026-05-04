@@ -35,8 +35,6 @@ class ChatFirstMoE(nn.Module):
         chat_output = self.chat_expert(input_ids, attention_mask)
         
         # 2. Check if a domain expert is needed
-        # In a real MoE, this happens per token, but for high-level domain routing,
-        # we can route per-query for efficiency in this architecture.
         domain_idx, confidence = self.router.get_route(query_text)
         
         if confidence >= self.config.router_threshold:
@@ -48,28 +46,30 @@ class ChatFirstMoE(nn.Module):
         
         return chat_output
 
-    def generate(self, query):
-        """High-level inference entry point"""
-        # Step 1: Chat expert generates response
-        chat_gen = self.chat_expert.generate(query)
+    def generate(self, prompt, max_tokens=512):
+        """High-level inference entry point: Routes to the best expert or uses the unified backbone."""
+        # Strip system prompt to get pure user query for routing
+        user_query = prompt.split("<|im_start|>user\n")[-1].split("<|im_end|>")[0] if "user\n" in prompt else prompt
+        
+        # Step 1: Chat expert generates basic response
+        chat_gen = self.chat_expert.generate(prompt, max_tokens=max_tokens)
         
         # Step 2: Route query to sub-experts
-        domain_idx, confidence = self.router.get_route(query)
+        domain_idx, confidence = self.router.get_route(user_query)
         
         routing_info = {
             "main_expert": "Neural Chat-9B",
             "active_domain": "general",
-            "confidence": 1.0 - confidence
+            "confidence": round(1.0 - confidence, 2)
         }
 
         if confidence >= self.config.router_threshold:
             domain_name = self.config.domain_names[domain_idx + 1]
             routing_info["active_domain"] = domain_name
-            routing_info["confidence"] = confidence
-            print(f"[MoE] Activating Domain Expert: {domain_name} (Conf: {confidence:.2f})")
+            routing_info["confidence"] = round(confidence, 2)
             
             # Step 3: Domain expert generates specialized technical info
-            expert_gen = self.sub_experts[domain_idx].generate(query)
+            expert_gen = self.sub_experts[domain_idx].generate(prompt, max_tokens=max_tokens // 2)
             
             # Step 4: Final Merged Output
             merged = self.merger.merge_responses(chat_gen, expert_gen, domain_name, confidence)

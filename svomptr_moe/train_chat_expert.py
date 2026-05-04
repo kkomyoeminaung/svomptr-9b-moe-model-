@@ -54,10 +54,18 @@ def train_chat_expert():
             def tokenize_function(examples):
                 # Construct ChatML format sequences
                 texts = []
-                for en, s, my in zip(examples["input"], examples["target"], examples["myanmar"]):
+                for en, s, my in zip(examples.get("en", examples.get("input", [])), 
+                                     examples.get("svomptr_structure", examples.get("target", [])), 
+                                     examples.get("my", examples.get("myanmar", []))):
                     # Handle different schema naming if necessary
-                    struct = f"S:{s.get('S','')}|V:{s.get('V','')}|O:{s.get('O','')}"
-                    text = f"<|im_start|>user\nTranslate: {en}<|im_end|>\n<|im_start|>assistant\n{my} (Structure: {struct})<|im_end|>"
+                    if isinstance(s, dict):
+                        struct = f"S:{s.get('S','')}|V:{s.get('V','')}|O:{s.get('O','')}"
+                    else:
+                        struct = str(s)
+                    
+                    # Consistent Prompt Template: Matches inference_chat_first.py
+                    sys_prompt = "English-to-Myanmar SVOMPTR Transformer Expert."
+                    text = f"<|im_start|>system\n{sys_prompt}<|im_end|>\n<|im_start|>user\nTranslate: {en}<|im_end|>\n<|im_start|>assistant\n{my} (Structure: {struct})<|im_end|>"
                     texts.append(text)
                 
                 model_inputs = tokenizer(texts, max_length=512, truncation=True, padding="max_length")

@@ -19,3 +19,6 @@ requests
 reportlab
 opencv-python
 pillow
+fastapi
+uvicorn
+pydantic

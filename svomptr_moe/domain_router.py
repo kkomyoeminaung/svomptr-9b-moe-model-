@@ -30,11 +30,18 @@ class DomainRouter(nn.Module):
         
         import os
         brain_dir = os.environ.get("SVOMPTR_BRAIN_PATH", "/content/drive/MyDrive/svomptr_brain")
+        auto_train_dir = "/content/drive/MyDrive/svomptr_auto_train"
         router_weights = os.path.join(brain_dir, "weights", "domain_router_final", "router_weights.pth")
-        if os.path.exists(router_weights):
+        auto_router_weights = os.path.join(auto_train_dir, "final_lora_weights", "router_weights.pth")
+        
+        target_weights = None
+        if os.path.exists(router_weights): target_weights = router_weights
+        elif os.path.exists(auto_router_weights): target_weights = auto_router_weights
+
+        if target_weights:
             try:
-                self.classifier.load_state_dict(torch.load(router_weights, map_location="cpu"))
-                print(f"[MoE Router] Loaded semantic classifier weights from {router_weights}")
+                self.classifier.load_state_dict(torch.load(target_weights, map_location="cpu"))
+                print(f"[MoE Router] Loaded semantic classifier weights from {target_weights}")
             except Exception as e:
                 print(f"[MoE Router] Failed to load custom weights: {e}")
         

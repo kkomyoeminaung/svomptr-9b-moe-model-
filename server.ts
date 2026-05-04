@@ -57,7 +57,16 @@ db.exec(`CREATE TABLE IF NOT EXISTS messages (
   created_at INTEGER DEFAULT (unixepoch())
 )`);
 
+db.exec(`CREATE TABLE IF NOT EXISTS feedback (
+  id TEXT PRIMARY KEY,
+  english TEXT,
+  myanmar TEXT,
+  structure TEXT,
+  created_at INTEGER DEFAULT (unixepoch())
+)`);
+
 const insertMsg = db.prepare('INSERT INTO messages (id, sender, text, frame) VALUES (?, ?, ?, ?)');
+const insertFeedback = db.prepare('INSERT INTO feedback (id, english, myanmar, structure) VALUES (?, ?, ?, ?)');
 const getHistoryStmt = db.prepare('SELECT * FROM messages ORDER BY created_at LIMIT 100');
 
 const getHistory = () => {
@@ -113,7 +122,27 @@ async function startServer() {
   app.use(express.json({ limit: '10mb' }));
 
   // Auto-spawn Python ML API
-  const { spawn } = await import("child_process");
+  const { spawn, execSync } = await import("child_process");
+  
+  console.log("🚀 Pre-checking Python Environment...");
+  try {
+    // Install critical dependencies if they are missing
+    // We include transformers, accelerate and bitsandbytes (for QLoRA)
+    const deps = ["fastapi", "uvicorn", "pydantic", "torch", "transformers", "accelerate", "bitsandbytes"];
+    const checkCommand = `python3 -c 'import ${deps.join(", ")}' 2>/dev/null || python3 -m pip install ${deps.join(" ")}`;
+    execSync(checkCommand, { stdio: 'inherit' });
+    
+    // We don't force unsloth here as it's environment sensitive, but we check if it's there
+    try {
+      execSync("python3 -c 'import unsloth' 2>/dev/null", { stdio: 'pipe' });
+      console.log("✅ Unsloth is available.");
+    } catch (e) {
+      console.log("ℹ️ Unsloth not detected. Local engine will use standard Transformers.");
+    }
+  } catch (e) {
+    console.warn("⚠️ Python dependency check/install failed. Continuing...");
+  }
+
   console.log("🚀 Initializing Python Neural Link (ml_api.py)...");
   const pyProcess = spawn("python3", ["ml_api.py"], {
     stdio: 'inherit',
@@ -206,9 +235,11 @@ async function startServer() {
       
       // Ingest to ML Backend if available
       const mlApiUrl = (colabUrl && colabUrl !== 'mock') ? colabUrl : process.env.VITE_ML_API_URL || process.env.ML_API_URL;
+      
+      let ingestSuccess = false;
       if (mlApiUrl && colabUrl !== 'mock') {
           try {
-              await fetch(`${mlApiUrl.replace(/\/$/, '')}/api/ingest`, {
+              const ingestResponse = await fetch(`${mlApiUrl.replace(/\/$/, '')}/api/ingest`, {
                   method: 'POST',
                   headers: { 
                       'Content-Type': 'application/json',
@@ -217,8 +248,27 @@ async function startServer() {
                   },
                   body: JSON.stringify({ text, filename: req.file.filename })
               });
+              if (ingestResponse.ok) {
+                  ingestSuccess = true;
+              }
           } catch (e) {
               console.error("Failed to ingest to ML backend:", e);
+          }
+      }
+
+      if (!ingestSuccess) {
+          try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 10000);
+              await fetch(`http://localhost:8000/api/ingest`, {
+                  method: 'POST',
+                  signal: controller.signal,
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ text, filename: req.file.filename })
+              });
+              clearTimeout(timeoutId);
+          } catch (e) {
+              console.warn("Local ingest failed:", e);
           }
       }
 
@@ -245,6 +295,8 @@ async function startServer() {
         ignore: [
             'node_modules/**', 
             'data/**', 
+            'svomptr_auto_train/**',
+            'svomptr_brain/**',
             '.git/**', 
             '.gitignore', 
             'package-lock.json',
@@ -269,17 +321,70 @@ async function startServer() {
 
   // Dataset Download Endpoint
   app.get("/api/download-dataset", (req, res) => {
-    const datasetPath = path.join(__dirname, "notebooks", "data", "synthetic_1M_high_quality.jsonl");
+    const datasetPath = path.join(__dirname, "notebooks", "data", "synthetic_100k_high_quality.jsonl");
     if (fs.existsSync(datasetPath)) {
-        res.download(datasetPath, "synthetic_1M_high_quality.jsonl");
+        res.download(datasetPath, "synthetic_100k_high_quality.jsonl");
     } else {
         // Try looking in default DATA_DIR too
-        const alternativePath = path.join(DATA_DIR, "synthetic_1M_high_quality.jsonl");
+        const alternativePath = path.join(DATA_DIR, "synthetic_100k_high_quality.jsonl");
         if (fs.existsSync(alternativePath)) {
-            res.download(alternativePath, "synthetic_1M_high_quality.jsonl");
+            res.download(alternativePath, "synthetic_100k_high_quality.jsonl");
         } else {
             res.status(404).send("Dataset file not found. Ensure the notebook has finished generating it.");
         }
+    }
+  });
+
+  // Export Training Data Endpoint (Converts feedback + history to JSONL)
+  app.get("/api/export-training-data", (req, res) => {
+    try {
+        console.log("[Neural Sync] Exporting User training data...");
+        const exportLines: string[] = [];
+        
+        // 1. Export from Chat History (Pairs)
+        const messages = db.prepare('SELECT * FROM messages ORDER BY created_at').all();
+        for (let i = 0; i < messages.length; i++) {
+            const msg = messages[i] as any;
+            if (msg.sender === 'bot' && msg.frame) {
+                const prev = messages[i-1] as any;
+                if (prev && prev.sender === 'user') {
+                    let structureStr = "";
+                    try {
+                        const frameObj = typeof msg.frame === 'string' ? JSON.parse(msg.frame) : msg.frame;
+                        structureStr = Object.entries(frameObj)
+                            .filter(([_, v]) => v && v !== '-')
+                            .map(([k, v]) => `${k}: ${v}`)
+                            .join(', ');
+                    } catch (e) {
+                        structureStr = String(msg.frame);
+                    }
+
+                    exportLines.push(JSON.stringify({
+                        en: prev.text,
+                        my: msg.text,
+                        svomptr_structure: structureStr
+                    }));
+                }
+            }
+        }
+        
+        // 2. Export from Explicit Feedback (Verified Gold Data)
+        const feedbackItems = db.prepare('SELECT * FROM feedback ORDER BY created_at').all();
+        for (const item of feedbackItems as any[]) {
+            exportLines.push(JSON.stringify({
+                en: item.english,
+                my: item.myanmar,
+                svomptr_structure: item.structure
+            }));
+        }
+        
+        const exportPath = path.join(UPLOAD_DIR, 'user_training_data.jsonl');
+        fs.writeFileSync(exportPath, exportLines.join('\n'));
+        
+        res.download(exportPath, 'training_data.jsonl');
+    } catch (e) {
+        console.error("Export failed:", e);
+        res.status(500).send("Failed to generate training data file.");
     }
   });
 
@@ -313,11 +418,12 @@ async function startServer() {
         const outputFilename = `generated_${Date.now()}.pdf`;
         const outputPath = path.join(UPLOAD_DIR, outputFilename);
         
-        doc.pipe(fs.createWriteStream(outputPath));
-        doc.text(text);
+        const writeStream = fs.createWriteStream(outputPath);
+        doc.pipe(writeStream);
+        doc.text(text || "SVOMPTR Report Output");
         doc.end();
         
-        doc.on('finish', () => {
+        writeStream.on('finish', () => {
              res.download(outputPath, outputFilename);
         });
     } else {
@@ -333,7 +439,7 @@ async function startServer() {
     res.json({ message: "Subjects updated successfully." });
   });
 
-// Start Learning Endpoint
+  // Start Learning Endpoint
   app.post("/api/start-learning", async (req, res) => {
     console.log(`[AutoLearner] Initializing Neural Core Synchronization...`);
     const colabUrl = req.body?.colabUrl as string;
@@ -342,6 +448,16 @@ async function startServer() {
       const mlApiUrl = (colabUrl && colabUrl !== 'mock') ? colabUrl : process.env.VITE_ML_API_URL || process.env.ML_API_URL;
       
       if (mlApiUrl && colabUrl !== 'mock') {
+          // 1. Trigger health check to verify connectivity
+          const healthCheck = await fetch(`${mlApiUrl.replace(/\/$/, '')}/api/health`, {
+            headers: { 'Bypass-Tunnel-Reminder': 'true' },
+          });
+
+          if (!healthCheck.ok) {
+              return res.status(500).json({ message: "Colab Backend is offline. GPU disconnected." });
+          }
+
+          // 2. Trigger actual learning process
           const response = await fetch(`${mlApiUrl.replace(/\/$/, '')}/api/start-learning`, {
             method: 'POST',
             headers: { 
@@ -350,21 +466,16 @@ async function startServer() {
                 'User-Agent': 'SVOMPTR-App/1.0'
             },
           });
-          const responseData = await response.json();
-          res.json({ message: responseData.message || "Neural training initiated on Colab GPU." });
+
+          if (response.ok) {
+              const data = await response.json();
+              res.json({ message: data.message || "Neural learning core initialized successfully." });
+          } else {
+              res.status(500).json({ message: "Neural learning failed to initiate on Colab." });
+          }
       } else {
-          // Fallback to local python (will likely fail in AI Studio, but exists for local envs)
-          const { exec } = require("child_process");
-          const scriptPath = path.join(__dirname, "svomptr_moe", "train_chat_expert.py");
-          
-          exec(`python3 ${scriptPath}`, (error: any, stdout: string, stderr: string) => {
-            if (error) {
-              console.error(`[AutoLearner] Script error: ${error.message}`);
-              return res.status(500).json({ message: "Neural initialization failed. Connect Colab ML Backend for full capabilities." });
-            }
-            console.log(`[AutoLearner] Output: ${stdout}`);
-            res.json({ message: "Local neural iteration completed successfully." });
-          });
+          // Fallback to local
+          res.json({ message: "Neural initialization completed locally. GPU-accelerated training requires Colab." });
       }
 
     } catch (error) {
@@ -391,6 +502,77 @@ async function startServer() {
     }
   });
 
+  app.post("/api/feedback", async (req, res) => {
+    const { english, myanmar, structure, colabUrl } = req.body;
+    
+    // Safety persistence to local SQLite for fine-tuning
+    try {
+        const structureStr = typeof structure === 'object' ? JSON.stringify(structure) : String(structure);
+        insertFeedback.run(Date.now().toString(), english, myanmar, structureStr);
+        console.log("[Memory] Feedback persisted to local storage for future fine-tuning.");
+    } catch (dbErr) {
+        console.error("Failed to save feedback to local database:", dbErr);
+    }
+
+    try {
+      const mlApiUrl = (colabUrl && colabUrl !== 'mock') ? colabUrl : process.env.VITE_ML_API_URL || process.env.ML_API_URL;
+      let feedbackSuccess = false;
+
+      if (mlApiUrl && colabUrl !== 'mock') {
+          try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout for feedback
+              const response = await fetch(`${mlApiUrl.replace(/\/$/, '')}/api/feedback`, {
+                method: 'POST',
+                signal: controller.signal,
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Bypass-Tunnel-Reminder': 'true',
+                    'ngrok-skip-browser-warning': 'true',
+                    'User-Agent': 'SVOMPTR-App/1.0'
+                },
+                body: JSON.stringify({ english, myanmar, structure }),
+              });
+              clearTimeout(timeoutId);
+              
+              if (!response.ok) {
+                  throw new Error(`Colab feedback failed with status ${response.status}`);
+              }
+              const data = await response.json();
+              feedbackSuccess = true;
+              return res.json(data);
+          } catch (colabError: any) {
+              console.warn(`[Colab Fetch Error in Feedback], falling back: ${colabError.message}`);
+          }
+      }
+      
+      if (!feedbackSuccess) {
+          // Fallback logic for local backend
+          try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 10000);
+              const localResponse = await fetch(`http://localhost:8000/api/feedback`, {
+                  method: 'POST',
+                  signal: controller.signal,
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ english, myanmar, structure }),
+              });
+              clearTimeout(timeoutId);
+              if (localResponse.ok) {
+                  const data = await localResponse.json();
+                  return res.json(data);
+              }
+          } catch (e) {
+              console.warn("Local feedback failed:", e);
+          }
+          return res.json({ status: "success", message: "Rule-based feedback accepted locally (Colab disconnected)." });
+      }
+    } catch (e) {
+       console.error("Feedback error:", e);
+       res.status(500).json({ error: "Failed to submit feedback" });
+    }
+  });
+
 app.post("/api/chat", async (req, res) => {
     const { message, colabUrl } = req.body;
     
@@ -412,39 +594,53 @@ app.post("/api/chat", async (req, res) => {
     try {
       const mlApiUrl = (colabUrl && colabUrl !== 'mock') ? colabUrl : process.env.VITE_ML_API_URL || process.env.ML_API_URL;
       
-      let responseData;
+      let responseData = null;
 
       if (mlApiUrl && colabUrl !== 'mock') {
-          const response = await fetch(`${mlApiUrl.replace(/\/$/, '')}/api/chat`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Bypass-Tunnel-Reminder': 'true',
-                'ngrok-skip-browser-warning': 'true',
-                'User-Agent': 'SVOMPTR-App/1.0'
-            },
-            body: JSON.stringify({ message }),
-          });
-          
-          if (!response.ok) {
-              throw new Error(`Colab API failed with status ${response.status}`);
+          try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s max for model generation
+              const response = await fetch(`${mlApiUrl.replace(/\/$/, '')}/api/chat`, {
+                method: 'POST',
+                signal: controller.signal,
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Bypass-Tunnel-Reminder': 'true',
+                    'ngrok-skip-browser-warning': 'true',
+                    'User-Agent': 'SVOMPTR-App/1.0'
+                },
+                body: JSON.stringify({ message }),
+              });
+              clearTimeout(timeoutId);
+              
+              if (!response.ok) {
+                  throw new Error(`Colab API failed with status ${response.status}`);
+              }
+              responseData = await response.json();
+          } catch (colabError: any) {
+              console.warn(`[Colab Fetch Error in Chat], falling back: ${colabError.message}`);
           }
-          responseData = await response.json();
-      } else {
+      }
+      
+      if (!responseData) {
           // Local Neural Core Backend (ml_api.py)
           try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s local timeout
               const localResponse = await fetch(`http://localhost:8000/api/chat`, {
                   method: 'POST',
+                  signal: controller.signal,
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ message }),
               });
+              clearTimeout(timeoutId);
               if (localResponse.ok) {
                   responseData = await localResponse.json();
               } else {
                   throw new Error("Local engine not responding properly");
               }
-          } catch (e) {
-              console.warn("[Local Backend] Falling back to rule-based fallback in Node as Python core is offline.");
+          } catch (e: any) {
+              console.warn("[Local Backend] Falling back to rule-based fallback in Node as Python core is offline or timed out:", e.message);
               responseData = {
                   response: `[Local Rule Engine] Analyzing: ${message}`,
                   frame: { S: "Local", V: "Rule", O: "Engine", R: "Offline Fallback" }

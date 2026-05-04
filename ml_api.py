@@ -8,6 +8,7 @@ import json
 
 # Add the project root to python path to use svomptr modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'svomptr_9b'))
 
 try:
     from svomptr_moe.inference_chat_first import ChatFirstInference
@@ -29,9 +30,20 @@ else:
 class ChatRequest(BaseModel):
     message: str
 
+class FeedbackRequest(BaseModel):
+    english: str
+    myanmar: str
+    structure: str
+
 @app.get("/api/health")
 def health():
     return {"status": "ok", "engine_ready": engine is not None}
+
+@app.post("/api/feedback")
+def feedback(req: FeedbackRequest):
+    if engine and hasattr(engine, 'memory'):
+        engine.memory.add_grammar_rule(f"USER FEEDBACK: {req.english}", req.myanmar, {"structure": req.structure})
+    return {"status": "success", "message": "Feedback registered successfully to local neural map."}
 
 @app.post("/api/chat")
 def chat(req: ChatRequest):
@@ -99,9 +111,10 @@ def start_learning():
     
     def run_training():
         try:
-            subprocess.run(["python", "-m", "svomptr_moe.train_chat_expert"], check=True)
-            subprocess.run(["python", "-m", "svomptr_moe.train_sub_experts"], check=True)
-            subprocess.run(["python", "-m", "svomptr_moe.train_router"], check=True)
+            python_exe = sys.executable or "python3"
+            subprocess.run([python_exe, "-m", "svomptr_moe.train_chat_expert"], check=True)
+            subprocess.run([python_exe, "-m", "svomptr_moe.train_sub_experts"], check=True)
+            subprocess.run([python_exe, "-m", "svomptr_moe.train_router"], check=True)
         except Exception as e:
             print(f"Training failed: {e}")
 

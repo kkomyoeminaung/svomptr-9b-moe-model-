@@ -80,12 +80,22 @@ export default function App() {
             if (r.ok && isMounted) {
                 const data = await r.json();
                 if (Array.isArray(data)) {
-                    const mapped = data.map((m: any) => ({
-                      id: m.id || generateId(),
-                      role: m.sender === 'user' ? 'user' : 'assistant' as any,
-                      content: m.text || '',
-                      frame: m.frame
-                    }));
+                    const mapped = data.map((m: any) => {
+                      let parsedFrame = m.frame;
+                      if (typeof m.frame === 'string') {
+                          try {
+                              parsedFrame = JSON.parse(m.frame);
+                          } catch (e) {
+                              parsedFrame = m.frame;
+                          }
+                      }
+                      return {
+                        id: m.id || generateId(),
+                        role: m.sender === 'user' ? 'user' : 'assistant' as any,
+                        content: m.text || '',
+                        frame: parsedFrame
+                      };
+                    });
                     setMessages(mapped);
                 }
             }
@@ -160,6 +170,33 @@ export default function App() {
     }
   };
 
+  const submitFeedback = async (english: string) => {
+    const correctMyanmar = window.prompt(`Teach me: What is the correct Myanmar translation for "${english}"?`);
+    if (!correctMyanmar) return;
+    const correctStruct = window.prompt("What is the correct Structure? (e.g. S: I, V: love, O: apples)");
+
+    try {
+        const resp = await fetch('/api/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                english: english, 
+                myanmar: correctMyanmar, 
+                structure: correctStruct || "N/A",
+                colabUrl: backendMode === 'colab' ? colabUrl : 'mock'
+            })
+        });
+        if (resp.ok) {
+            const data = await resp.json();
+            alert(`Thanks! ${data.message || "Feedback registered successfully."}`);
+        } else {
+            alert("Failed to submit feedback.");
+        }
+    } catch(e) {
+        alert("Network error.");
+    }
+  };
+
   const sendMessage = async () => {
     if (isLoading || (!input.trim() && !file)) {
         console.log("[Chat] Send blocked: empty input or loading");
@@ -178,6 +215,9 @@ export default function App() {
       if (file) {
         const formData = new FormData();
         formData.append('file', file);
+        if (backendMode === 'colab' && colabUrl) {
+           formData.append('colabUrl', colabUrl);
+        }
         const resp = await fetch('/api/upload', { method: 'POST', body: formData });
         const data = await resp.json();
         fileContent = ` [File: ${data.filename}]`;
@@ -218,11 +258,11 @@ export default function App() {
       } catch (err) {
           throw err; 
       }
-    } catch (error) {
+    } catch (error: any) {
       setMessages(prev => [...prev, {
         id: generateId(),
         role: 'assistant',
-        content: "⚠️ Connection to local SVOMPTR-9B core lost. Please check your backend status."
+        content: `⚠️ Error: ${error.message || "Connection to local SVOMPTR-9B core lost. Please check your backend status."}`
       }]);
     } finally {
       setIsLoading(false);
@@ -380,7 +420,11 @@ export default function App() {
                       </div>
                     </motion.div>
                   ) : (
-                    messages.map((msg) => (
+                    messages.map((msg, idx) => {
+                      const prevMsg = idx > 0 ? messages[idx-1] : null;
+                      const originalEnglish = prevMsg?.role === 'user' ? prevMsg.content : "N/A";
+                      
+                      return (
                       <motion.div 
                         key={msg.id}
                         initial={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -455,22 +499,17 @@ export default function App() {
                                     Helpful
                                 </button>
                                 <button 
-                                    onClick={() => {
-                                        const correct = window.prompt("Teach me: What should be the correct translation/structure?");
-                                        if (correct) {
-                                            setInput(`Correction: For "${msg.content.split('\n')[0].replace('Translation:', '').strip()}", it should be "${correct}"`);
-                                            sendMessage();
-                                        }
-                                    }}
+                                    onClick={() => submitFeedback(originalEnglish)}
                                     className="px-3 py-1 bg-white border border-slate-100 rounded-lg text-[10px] font-bold text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-all"
                                 >
-                                    Improve Answer
+                                    Improve Answer / Add to RAG
                                 </button>
                             </div>
                           )}
                         </div>
                       </motion.div>
-                    ))
+                      );
+                    })
                   )}
                   {isLoading && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-5">

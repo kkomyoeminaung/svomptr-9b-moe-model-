@@ -73,8 +73,12 @@ export default function KnowledgeIngestion() {
             colabUrl: backendMode === 'colab' ? colabUrl : 'mock'
         })
       });
-      if (resp.ok) setStatus('✅ Neural learning process initialized');
-      else setStatus('❌ Initialization failed');
+      if (resp.ok) {
+          const data = await resp.json();
+          setStatus(`✅ ${data.message || 'Neural learning process initialized'}`);
+      } else {
+          setStatus('❌ Initialization failed');
+      }
     } catch { setStatus('❌ Connection error'); }
     setLoading(false);
   };

@@ -63,9 +63,9 @@ def train_chat_expert():
                     else:
                         struct = str(s)
                     
-                    # Consistent Prompt Template: Matches inference_chat_first.py
+                    # Consistent Prompt Template: Matches inference_chat_first.py and Notebooks
                     sys_prompt = "English-to-Myanmar SVOMPTR Transformer Expert."
-                    text = f"<|im_start|>system\n{sys_prompt}<|im_end|>\n<|im_start|>user\nTranslate: {en}<|im_end|>\n<|im_start|>assistant\n{my} (Structure: {struct})<|im_end|>"
+                    text = f"<|im_start|>system\n{sys_prompt}<|im_end|>\n<|im_start|>user\nTranslate: {en}<|im_end|>\n<|im_start|>assistant\nTranslation: {my}\nStructure: {struct}<|im_end|>"
                     texts.append(text)
                 
                 model_inputs = tokenizer(texts, max_length=512, truncation=True, padding="max_length")

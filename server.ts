@@ -362,7 +362,7 @@ async function startServer() {
                     exportLines.push(JSON.stringify({
                         en: prev.text,
                         my: msg.text,
-                        svomptr_structure: structureStr
+                        svomptr_structure: "Structure: " + structureStr
                     }));
                 }
             }
@@ -374,7 +374,7 @@ async function startServer() {
             exportLines.push(JSON.stringify({
                 en: item.english,
                 my: item.myanmar,
-                svomptr_structure: item.structure
+                svomptr_structure: "Structure: " + item.structure
             }));
         }
         

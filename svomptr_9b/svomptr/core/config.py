@@ -6,12 +6,12 @@ import yaml
 
 @dataclass
 class ModelConfig:
-    model_name: str = "svomptr-grand-3b"
+    model_name: str = "svomptr-9b-moe"
     hidden_dim: int = 2048
     num_layers: int = 24
     num_heads: int = 16
     num_slots: int = 7
-    vocab_size: int = 100000
+    vocab_size: int = 151936
     max_seq_len: int = 4096
     dropout: float = 0.1
     slot_predictor_layers: int = 3
@@ -35,6 +35,11 @@ class ModelConfig:
     use_bf16: bool = False
     gradient_checkpointing: bool = True
     quantization: Optional[int] = None
+    
+    # Constants for distillation and references
+    TEACHER_MODEL: str = "Qwen/Qwen2.5-7B-Instruct"
+    STUDENT_BASE: str = "Qwen/Qwen2.5-1.5B-Instruct"
+    distillation_temperature: float = 2.0
 
     @classmethod
     def from_yaml(cls, path: str) -> "ModelConfig":

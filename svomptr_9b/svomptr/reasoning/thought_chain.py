@@ -3,14 +3,14 @@ class ThoughtChain:
     """Chain of Thought module"""
     def __init__(self):
         self.prefix = "Let's think step by step:"
+        from ..core.svomptr_complete import SVOMPTRCompleteParser
+        self.parser = SVOMPTRCompleteParser()
     
     def generate_thought(self, prompt, context_hint=None):
         """
         Generates a sequence of internal logic steps (Chain of Thought).
         """
-        from ..core.svomptr_complete import SVOMPTRCompleteParser
-        parser = SVOMPTRCompleteParser()
-        parse_result = parser.parse(prompt)
+        parse_result = self.parser.parse(prompt)
         
         steps = [
             f"1. Analyzed Input: Found Subject '{parse_result.S}' and Verb '{parse_result.V}'.",

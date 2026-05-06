@@ -40,7 +40,11 @@ def quantize_model(model: nn.Module, bits: int = 4):
             parent = model
             parts = name.split('.')
             for part in parts[:-1]:
-                parent = getattr(parent, part)
+                try:
+                    part_int = int(part)
+                    parent = parent[part_int]
+                except ValueError:
+                    parent = getattr(parent, part)
             setattr(parent, parts[-1], new_module)
             
     print("✅ Quantization Applied Successfully.")

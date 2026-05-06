@@ -14,7 +14,7 @@ from ..reasoning.dreamer import Dreamer
 from ..layers.virtual_subject import VirtualSubjectDetector, VirtualSubjectEmbedding
 from .svomptr_rules import SVOMPTRRuleEngine
 from .svomptr_complete import SVOMPTRCompleteParser
-from svomptr_9b.svomptr_moe.experts import MoELayer
+from svomptr_moe.experts import MoELayer
 
 class SVOMPTR9B(nn.Module):
     def __init__(self, config=None):
@@ -77,24 +77,36 @@ class SVOMPTR9B(nn.Module):
         """Real auto-regressive generation logic."""
         self.eval()
         generated = prompt_ids
+        eos_token_id = getattr(self.config, 'eos_token_id', self.config.vocab_size - 1)                
+
+        eos_ids = [eos_token_id]
+        if hasattr(self.config, 'pad_token_id'):
+            eos_ids.append(self.config.pad_token_id)
+        
         for _ in range(max_new_tokens):
             logits, _ = self.forward(generated[:, -512:]) # Context window
             next_token_logits = logits[:, -1, :]
             next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
             generated = torch.cat([generated, next_token], dim=-1)
-            if next_token.item() == self.config.vocab_size - 1: # EOS
+            if next_token.item() in eos_ids: # EOS check
                 break
         return generated
 
-    def chat(self, message: str) -> Dict:
+    def chat(self, message: str, tokenizer=None) -> Dict:
         """Hybrid approach: Rules + Neural Generation"""
         # Step 1: Structural Extraction
         frame = self.rule_engine.parse(message)
         
-        # Step 2: Neural Response Generation (Simplified for demo)
-        # Note: In a real environment, we would tokenize and run self.generate
-        # Here we provide the analyzed response structure
-        response_text = f"Analyzed Sentence: S={frame.S}, V={frame.V}. I am ready to process the grammar."
+        # Step 2: Neural Response Generation
+        if tokenizer:
+            tokens = tokenizer(message, return_tensors="pt").to(self.embedding.weight.device)
+            # Ensure we're using input['input_ids']
+            input_ids = tokens['input_ids'] if isinstance(tokens, dict) else tokens
+            with torch.no_grad():
+                generated = self.generate(input_ids)
+            response_text = tokenizer.decode(generated[0])
+        else:
+            response_text = f"Analyzed Sentence: S={frame.S}, V={frame.V}. I am ready to process the grammar."
         
         ui_frame = {
             "Subject": frame.S or "Inferred",

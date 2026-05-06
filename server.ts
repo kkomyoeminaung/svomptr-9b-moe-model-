@@ -122,35 +122,41 @@ async function startServer() {
   app.use(express.json({ limit: '10mb' }));
 
   // Auto-spawn Python ML API
-  const { spawn, execSync } = await import("child_process");
+  const { spawn, exec } = await import("child_process");
   
-  console.log("🚀 Pre-checking Python Environment...");
-  try {
-    // Install critical dependencies if they are missing
-    // We include transformers, accelerate and bitsandbytes (for QLoRA)
-    const deps = ["fastapi", "uvicorn", "pydantic", "torch", "transformers", "accelerate", "bitsandbytes"];
-    const checkCommand = `python3 -c 'import ${deps.join(", ")}' 2>/dev/null || python3 -m pip install ${deps.join(" ")}`;
-    execSync(checkCommand, { stdio: 'inherit' });
-    
-    // We don't force unsloth here as it's environment sensitive, but we check if it's there
-    try {
-      execSync("python3 -c 'import unsloth' 2>/dev/null", { stdio: 'pipe' });
-      console.log("✅ Unsloth is available.");
-    } catch (e) {
-      console.log("ℹ️ Unsloth not detected. Local engine will use standard Transformers.");
+  console.log("🚀 Pre-checking Python Environment (Async)...");
+  const deps = ["fastapi", "uvicorn", "pydantic", "torch", "transformers", "accelerate", "bitsandbytes", "sentence-transformers"];
+  const checkCommand = `python3 -c 'import ${deps.join(", ")}' 2>/dev/null || python3 -m pip install ${deps.join(" ")}`;
+  
+  exec(checkCommand, (error, stdout, stderr) => {
+    if (error) {
+      console.warn("⚠️ Python dependency check/install failed. Continuing...");
+    } else {
+      console.log("✅ Python dependencies verified.");
+      exec("python3 -c 'import unsloth' 2>/dev/null", (err2) => {
+          if(!err2) console.log("✅ Unsloth is available.");
+          else console.log("ℹ️ Unsloth not detected. Local engine will use standard Transformers.");
+      });
     }
-  } catch (e) {
-    console.warn("⚠️ Python dependency check/install failed. Continuing...");
-  }
+  });
 
-  console.log("🚀 Initializing Python Neural Link (ml_api.py)...");
-  const pyProcess = spawn("python3", ["ml_api.py"], {
-    stdio: 'inherit',
-    detached: false
-  });
-  pyProcess.on('error', (err) => {
-    console.error("❌ Failed to start Python Neural Link:", err);
-  });
+  let pyProcess: any = null;
+  const startMLProcess = () => {
+    console.log("🚀 Initializing Python Neural Link (ml_api.py)...");
+    pyProcess = spawn("python3", ["ml_api.py"], {
+      stdio: 'inherit',
+      detached: false
+    });
+    pyProcess.on('error', (err: any) => {
+      console.error("❌ Failed to start Python Neural Link:", err);
+    });
+    
+    pyProcess.on('exit', (code: any) => {
+      console.error(`❌ Python ML API exited with code ${code}. Restarting in 3s...`);
+      setTimeout(startMLProcess, 3000);
+    });
+  };
+  startMLProcess();
   
   app.post("/api/synthesize", async (req, res) => {
     try {

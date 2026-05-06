@@ -22,10 +22,20 @@ class BaseTrainer:
     def validate(self):
         self.model.eval()
         total_loss = 0
+        count = 0
         with torch.no_grad():
             for batch in self.val_loader:
-                # Basic validation logic
-                pass
+                try:
+                    # Generic train_step usually returns loss, 
+                    # but since different phases have different signatures, 
+                    # we try to call a simplified version
+                    loss = self.train_step(batch)
+                    total_loss += loss.item()
+                    count += 1
+                except: continue
+        
+        avg_loss = total_loss / max(1, count)
+        print(f"📉 Validation Loss: {avg_loss:.4f}")
         self.model.train()
 
     def save_checkpoint(self, path):

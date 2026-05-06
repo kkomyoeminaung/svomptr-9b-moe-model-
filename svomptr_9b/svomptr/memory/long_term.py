@@ -6,6 +6,8 @@ import numpy as np
 import json
 from sentence_transformers import SentenceTransformer
 
+import threading
+
 class LongTermMemory:
     """Persistent storage using FAISS and SQLite"""
     def __init__(self, db_path="data/database/memory.db", index_path="data/database/faiss.index"):
@@ -17,21 +19,24 @@ class LongTermMemory:
         os.makedirs(os.path.dirname(index_path), exist_ok=True)
         
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._lock = threading.Lock()
         self._init_db()
         
         self.encoder = SentenceTransformer('all-MiniLM-L6-v2')
         self.index = self._init_index()
+        self._write_counter = 0
         print(f"✅ RAG/SQLite Memory Initialized (Total: {self.index.ntotal} vectors)")
 
     def _init_db(self):
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS memory (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                text TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS memory (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    text TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            self.conn.commit()
 
     def _init_index(self):
         if os.path.exists(self.index_path):
@@ -56,13 +61,14 @@ class LongTermMemory:
         distances, indices = self.index.search(embedding, 5)
         
         rules = []
-        cursor = self.conn.cursor()
-        for idx in indices[0]:
-            if idx == -1: continue
-            cursor.execute("SELECT text FROM memory WHERE id = ?", (int(idx),))
-            row = cursor.fetchone()
-            if row and "RULE_ENG" in row[0]:
-                rules.append(row[0])
+        with self._lock:
+            cursor = self.conn.cursor()
+            for idx in indices[0]:
+                if idx == -1: continue
+                cursor.execute("SELECT text FROM memory WHERE id = ?", (int(idx),))
+                row = cursor.fetchone()
+                if row and "RULE_ENG" in row[0]:
+                    rules.append(row[0])
         
         return rules
 
@@ -72,16 +78,36 @@ class LongTermMemory:
         embedding = self.encoder.encode([combined]).astype('float32')
         
         # Store in SQLite first to get row ID
-        cursor = self.conn.cursor()
-        cursor.execute("INSERT INTO memory (text) VALUES (?)", (combined,))
-        db_id = cursor.lastrowid
-        self.conn.commit()
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute("INSERT INTO memory (text) VALUES (?)", (combined,))
+            db_id = cursor.lastrowid
+            self.conn.commit()
         
         # Add to FAISS with db_id
         self.index.add_with_ids(embedding, np.array([db_id], dtype=np.int64))
         
-        # Persist index
-        faiss.write_index(self.index, self.index_path)
+        # Persist index every 1000 writes to save disk I/O
+        self._write_counter += 1
+        if self._write_counter % 1000 == 0:
+            faiss.write_index(self.index, self.index_path)
+
+    def close(self):
+        """Safe connection termination"""
+        if hasattr(self, 'conn') and self.conn:
+            self.conn.close()
+            self.conn = None
+
+    def __del__(self):
+        self.close()
+
+    def flush(self):
+        """Call at end of pipeline to ensure final save"""
+        try:
+            faiss.write_index(self.index, self.index_path)
+            print("✅ FAISS index flushed to disk.")
+        except Exception as e:
+            print(f"⚠️ Error flushing FAISS index: {e}")
 
     def get_relevant_context(self, query: str, top_k: int = 3) -> str:
         """FAISS vector search to retrieve relevant memories"""
@@ -92,20 +118,22 @@ class LongTermMemory:
         distances, indices = self.index.search(embedding, top_k)
         
         results = []
-        cursor = self.conn.cursor()
-        for idx in indices[0]:
-            if idx == -1: continue
-            # Retrieve by exact db_id
-            cursor.execute("SELECT text FROM memory WHERE id = ?", (int(idx),))
-            row = cursor.fetchone()
-            if row:
-                results.append(row[0])
+        with self._lock:
+            cursor = self.conn.cursor()
+            for idx in indices[0]:
+                if idx == -1: continue
+                # Retrieve by exact db_id
+                cursor.execute("SELECT text FROM memory WHERE id = ?", (int(idx),))
+                row = cursor.fetchone()
+                if row:
+                    results.append(row[0])
         
         return "\n".join(results)
 
     def get_all_memories(self):
-        cursor = self.conn.execute("SELECT text FROM memory")
-        return [row[0] for row in cursor.fetchall()]
+        with self._lock:
+            cursor = self.conn.execute("SELECT text FROM memory")
+            return [row[0] for row in cursor.fetchall()]
 
     def synthesize_rules(self, batch_size=10):
         """

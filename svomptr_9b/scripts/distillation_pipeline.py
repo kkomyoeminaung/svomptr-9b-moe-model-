@@ -24,9 +24,15 @@ def load_checkpoint():
             return json.load(f)
     return {"epoch": 0, "step": 0}
 
-def save_checkpoint(epoch, step):
+def save_checkpoint(epoch, step, optimizer=None, model=None):
+    data = {"epoch": epoch, "step": step}
+    if optimizer:
+        torch.save(optimizer.state_dict(), os.path.join(BASE_DIR, "optim_state.pt"))
+    if model:
+        torch.save(model.state_dict(), os.path.join(BASE_DIR, f"model_ep{epoch}_step{step}.pt"))
     with open(CHECKPOINT_FILE, 'w', encoding='utf-8') as f:
-        json.dump({"epoch": epoch, "step": step}, f)
+        json.dump(data, f)
+    print(f"💾 Checkpoint saved: Epoch {epoch}, Step {step}")
 
 # 2. Distillation Trainer
 class DistillationTrainer:
@@ -60,7 +66,7 @@ class DistillationTrainer:
         # Fixed Bug #5: Student model now has forward() implemented
         student_logits, _ = self.student(batch_inputs)
         
-        loss = self.distillation_loss(student_logits, teacher_logits)
+        loss = self.distillation_loss(student_logits, teacher_logits, temperature=self.student.config.distillation_temperature if hasattr(self.student, 'config') and hasattr(self.student.config, 'distillation_temperature') else 2.0)
         return loss
 
 # 3. Main Data Distillation Execution
@@ -97,7 +103,7 @@ def run_distillation(total_epochs=5):
 
     print(f"🚀 Distillation Starting (Resume from Epoch {start_epoch + 1})")
     
-    trainer = DistillationTrainer("Qwen/Qwen2.5-7B", student_model)
+    trainer = DistillationTrainer(config.TEACHER_MODEL, student_model)
     optimizer = torch.optim.AdamW(trainer.student.parameters(), lr=1e-5)
     
     # Dataset check
@@ -106,8 +112,12 @@ def run_distillation(total_epochs=5):
         print(f"💡 Seed data missing. Generating 100 synthetic training batches...")
         train_loader = [torch.randint(0, config.vocab_size, (4, 128)) for _ in range(100)]
     else:
-        # Load and validate real data
-        train_loader = [torch.randint(0, config.vocab_size, (4, 128))] * 200
+        from torch.utils.data import DataLoader
+        from svomptr_9b.training.dataset import SVOMPTRDataset
+        from svomptr_9b.svomptr.core.tokenizer import RuleTokenizer
+        tok = RuleTokenizer(vocab_size=config.vocab_size)
+        ds = SVOMPTRDataset(data_source, tok)
+        train_loader = DataLoader(ds, batch_size=4, shuffle=True)
     
     print(f"📊 Training Queue: {len(train_loader)} batches per epoch.")
 
@@ -117,8 +127,18 @@ def run_distillation(total_epochs=5):
         for step, batch in enumerate(loop):
             optimizer.zero_grad()
             try:
-                loss = trainer.train_step(batch)
+                # Handle dictionary input from DataLoader vs synthetic tensor
+                if isinstance(batch, dict):
+                    batch_inputs = batch['input_ids']
+                else:
+                    batch_inputs = batch
+                
+                loss = trainer.train_step(batch_inputs)
                 loss.backward()
+                
+                # Gradient Clipping
+                torch.nn.utils.clip_grad_norm_(trainer.student.parameters(), max_norm=1.0)
+                
                 optimizer.step()
                 
                 loss_val = loss.item()
@@ -127,13 +147,13 @@ def run_distillation(total_epochs=5):
                 
                 # Checkpoint persistence (Every 20 steps)
                 if step % 20 == 0:
-                    save_checkpoint(epoch, step)
+                    save_checkpoint(epoch, step, optimizer, trainer.student)
             except Exception as e:
                 print(f"\n🛑 Step {step} Failed: {e}")
                 return # Strict failure
         
         # Save end of epoch
-        save_checkpoint(epoch + 1, 0)
+        save_checkpoint(epoch + 1, 0, optimizer, trainer.student)
         print(f"💾 Epoch {epoch+1} finished and synced to Drive.")
 
 if __name__ == "__main__":

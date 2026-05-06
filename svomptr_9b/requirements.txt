@@ -14,11 +14,13 @@ duckduckgo-search
 beautifulsoup4
 pypdf
 python-docx
-vllm
+# Optional GPU only packages:
+# vllm
 requests
 reportlab
 opencv-python
 pillow
+pytesseract
 fastapi
 uvicorn
 pydantic

@@ -18,17 +18,18 @@ def print_banner(text):
     print(f"🚀 {datetime.now().strftime('%H:%M:%S')} | {text}")
     print("="*60 + "\n")
 
-def keep_alive_heartbeat():
+def keep_alive_heartbeat(stop_event):
     """Background thread to keep the session active and show progress."""
     start_time = time.time()
-    while True:
+    while not stop_event.is_set():
         elapsed = time.strftime("%H:%M:%S", time.gmtime(time.time() - start_time))
         print(f"💓 [HEARTBEAT] Pipeline active | Elapsed: {elapsed} | Time: {datetime.now().strftime('%H:%M:%S')}")
-        time.sleep(60) # Log every minute
+        stop_event.wait(60) # Log every minute
 
 def orchestrate():
     # Start Heartbeat
-    heartbeat_thread = threading.Thread(target=keep_alive_heartbeat, daemon=True)
+    stop_event = threading.Event()
+    heartbeat_thread = threading.Thread(target=keep_alive_heartbeat, args=(stop_event,), daemon=True)
     heartbeat_thread.start()
 
     # Phase 0: Environment & Storage
@@ -41,6 +42,7 @@ def orchestrate():
             print("✅ Google Drive already mounted.")
     except Exception as e:
         print(f"🛑 Drive Mount Failed: {e}")
+        stop_event.set()
         return
 
     # Define Persistent Storage (Brain)
@@ -56,31 +58,39 @@ def orchestrate():
             
     dataset_file = os.path.join(brain_dir, 'datasets', 'synthetic_5000000.jsonl')
     
+    REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
     # Phase 1: High-Speed Generation via vLLM
     print_banner("PHASE 1: Dataset Generation (High-Speed vLLM)")
     
     try:
         # We run the specific script to ensure standard behavior
-        print(f"🛠️ Executing Standalone Generator: python3 /generate_data.py")
-        subprocess.run([sys.executable, "/generate_data.py"], check=True)
+        script_path = os.path.join(REPO_ROOT, "generate_data.py")
+        print(f"🛠️ Executing Standalone Generator: python3 {script_path}")
+        subprocess.run([sys.executable, script_path], check=True)
         print("✅ Data Generation Phase Finished.")
     except Exception as e:
         print(f"🛑 Generation Phase Interrupted: {e}")
+        stop_event.set()
         return
 
     # Phase 2 & 3: Distillation & DOP Alignment
     print_banner("PHASE 2 & 3: Model Training & DOP Alignment")
     try:
-        print(f"🛠️ Executing Standalone Trainer: python3 /train_distillation.py")
-        subprocess.run([sys.executable, "/train_distillation.py"], check=True)
+        script_path = os.path.join(REPO_ROOT, "train_distillation.py")
+        print(f"🛠️ Executing Standalone Trainer: python3 {script_path}")
+        subprocess.run([sys.executable, script_path], check=True)
         print("✅ Model Training & DOP Alignment Finished.")
     except Exception as e:
         print(f"🛑 Training Phase Failed: {e}")
+        stop_event.set()
         return
 
     print_banner("✨ SVOMPTR-9B FULL PIPELINE COMPLETED ✨")
     print(f"📦 Final Model Saved to: {os.path.join(brain_dir, 'weights', 'chat_expert_final')}")
     print(f"🎯 DOP Signature: {os.path.join(brain_dir, 'dop_alignment', 'alignment_signature.txt')}")
+    
+    stop_event.set()
 
 if __name__ == "__main__":
     # Ensure vllm is really installed (Colab-specific check)

@@ -13,6 +13,10 @@ def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=Fal
     Main pipeline to orchestrate knowledge distillation.
     target_total_samples: Target number of samples to reach.
     """
+    if dry_run:
+        target_total_samples = 1000
+        print(f"🧪 DRY RUN MODE: target_total_samples restricted to {target_total_samples}")
+    
     memory = LongTermMemory() if not dry_run or os.getenv("ENABLE_TEST_MEMORY") else None
     distiller = GrammarDistiller(memory=memory)
     vllm_gen = None
@@ -32,7 +36,7 @@ def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=Fal
         "discourse", "emphasis", "prepositions", "determiners", 
         "numerals", "phrasal_verbs", "subjunctive", "reflexive", 
         "adverbs", "clauses", "appositives", "tag_questions", 
-        "absolute_phrases", "punctuation", "myanmar_particles",
+        "absolute_phrases", "punctuation", "myanmar_grammar",
         "honorifics", "verb_suffixes", "noun_markers", "demonstratives",
         "relative_clauses", "comparative_degree", "superlative",
         "idiomatic_expressions", "interjections", "modal_verbs",
@@ -50,6 +54,17 @@ def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=Fal
                 progress = json.load(f)
                 print(f"🔄 Resuming from checkpoint: {progress['total_samples']} samples collected.")
         except: pass
+
+    if os.path.exists(output_temp_file):
+        try:
+            with open(output_temp_file, "r", encoding="utf-8") as f:
+                actual_lines = sum(1 for _ in f)
+            if actual_lines != progress["total_samples"]:
+                print(f"⚠️  Reconciling temp file lines ({actual_lines}) with checkpoint ({progress['total_samples']}).")
+                progress["total_samples"] = actual_lines
+        except Exception as e:
+            print(f"⚠️  Could not count lines in temp file: {e}")
+
 
     # 2. Main Loop
     current_samples = progress['total_samples']
@@ -127,12 +142,14 @@ def run_distillation_pipeline(output_file="distilled_dataset.jsonl", dry_run=Fal
 
     # 3. Finalize
     if current_samples >= target_total_samples:
-        import shutil
-        shutil.copy2(output_temp_file, output_file)
+        os.rename(output_temp_file, output_file)
         print(f"✅ Target reached! Dataset saved to {output_file}")
     else:
         print(f"⚠️ Pipeline session ended at {current_samples} samples. Data is safe in {output_temp_file}. Run again to resume.")
     
+    if memory:
+        memory.flush()
+        
     return current_samples
 
 if __name__ == "__main__":

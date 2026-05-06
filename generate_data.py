@@ -3,13 +3,11 @@ import os
 import sys
 
 # Critical Path Injection for Colab/Stand-alone run
-PROJECT_ROOT = "/content/svomptr-project"
-ALTERNATE_ROOT = "/content/svomptr_9b"
-for p in [PROJECT_ROOT, ALTERNATE_ROOT]:
-    if os.path.exists(p) and p not in sys.path:
-        sys.path.insert(0, p)
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, PROJECT_ROOT)
+sys.path.insert(0, os.path.join(PROJECT_ROOT, "svomptr_9b"))
 
-from svomptr.distillation.pipeline import run_distillation_pipeline
+from svomptr_9b.svomptr.distillation.pipeline import run_distillation_pipeline
 
 def main():
     print("🚀 Starting Synthetic Data Generation Phase...")

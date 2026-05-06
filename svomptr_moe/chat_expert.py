@@ -26,7 +26,8 @@ class ChatExpert(nn.Module):
             elif os.path.exists(auto_model_path):
                 model_path = auto_model_path
             else:
-                model_path = "Qwen/Qwen2.5-1.5B-Instruct"
+                from svomptr_9b.svomptr.core.config import ModelConfig
+                model_path = ModelConfig.STUDENT_BASE
 
         try:
             from transformers import pipeline

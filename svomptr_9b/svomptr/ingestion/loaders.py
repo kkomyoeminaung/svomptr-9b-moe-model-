@@ -28,9 +28,20 @@ class FileLoader:
 
     @staticmethod
     def load_html(url):
-        response = requests.get(url)
+        response = requests.get(url, timeout=15)
         soup = BeautifulSoup(response.content, 'html.parser')
         return soup.get_text()
+
+    @staticmethod
+    def load_image(path):
+        try:
+            import pytesseract
+            from PIL import Image
+            img = Image.open(path)
+            return pytesseract.image_to_string(img, lang='eng+mya')
+        except ImportError:
+            # OCR is unavailable, return basic metadata
+            return f"[Image: {os.path.basename(path)} - install pytesseract for OCR]"
 
     @staticmethod
     def load_zip(path, extract_to):

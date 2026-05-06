@@ -17,6 +17,13 @@ except ImportError as e:
     print("Ensure you are running this from the project root.")
     ChatFirstInference = None
 
+from datetime import datetime
+import subprocess
+import threading
+
+# Global training status
+training_status = {"running": False, "last_error": None, "last_completed": None}
+
 app = FastAPI(title="SVOMPTR-9B Neural Link API")
 
 # Initialize the model engine
@@ -104,19 +111,30 @@ def synthesize():
         return {"status": "success", "new_rules_count": len(new_rules), "samples": new_rules}
     return {"status": "error", "message": "Engine not initialized"}
 
+@app.get("/api/training-status")
+def get_training_status():
+    return training_status
+
 @app.post("/api/start-learning")
 def start_learning():
-    import subprocess
-    import threading
+    if training_status["running"]:
+        return {"message": "Neural core training is already in progress.", "status": training_status}
     
     def run_training():
+        global training_status
+        training_status["running"] = True
+        training_status["last_error"] = None
         try:
             python_exe = sys.executable or "python3"
             subprocess.run([python_exe, "-m", "svomptr_moe.train_chat_expert"], check=True)
             subprocess.run([python_exe, "-m", "svomptr_moe.train_sub_experts"], check=True)
             subprocess.run([python_exe, "-m", "svomptr_moe.train_router"], check=True)
+            training_status["last_completed"] = datetime.now().isoformat()
         except Exception as e:
+            training_status["last_error"] = str(e)
             print(f"Training failed: {e}")
+        finally:
+            training_status["running"] = False
 
     threading.Thread(target=run_training).start()
     return {"message": "Neural core training initiated in the background on Colab GPU."}

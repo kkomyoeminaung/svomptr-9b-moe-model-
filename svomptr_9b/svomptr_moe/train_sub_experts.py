@@ -38,4 +38,8 @@ def train_domain_experts(model, train_loader, device):
     print("✅ All 5 Sub-Experts optimized with real gradients.")
 
 if __name__ == "__main__":
-    train_domain_experts()
+    from svomptr_9b.svomptr.core.model_9b import SVOMPTR9B
+    from svomptr_9b.svomptr.core.config import ModelConfig
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = SVOMPTR9B(ModelConfig()).to(device)
+    print("Standalone instantiation complete. Pass real train_loader to run.")

@@ -1,33 +1,25 @@
 # svomptr/core/tokenizer.py
 import torch
+from transformers import AutoTokenizer
 
 class RuleTokenizer:
-    """A rule-based tokenizer for structural SVOMPTR processing."""
-    def __init__(self, vocab_size=50257):
+    """A wrapper around pre-trained tokenizer for structural SVOMPTR processing."""
+    def __init__(self, model_name="Qwen/Qwen2.5-1.5B-Instruct", vocab_size=50257):
+        self._tok = AutoTokenizer.from_pretrained(model_name)
+        # Fallback to model's vocab size
         self.vocab_size = vocab_size
-        self.pad_token_id = 0
-        self.eos_token_id = vocab_size - 1
+        self.pad_token_id = self._tok.pad_token_id or 0
+        self.eos_token_id = self._tok.eos_token_id or vocab_size - 1
         
     def __call__(self, text, max_length=128, padding='max_length', truncation=True, **kwargs):
-        # Extremely simple deterministic mapping for preview
-        ids = [ord(c) % (self.vocab_size - 2) + 1 for c in str(text)[:max_length]]
-        
-        if truncation:
-            ids = ids[:max_length]
-            
-        attention_mask = [1] * len(ids)
-        
-        if padding == 'max_length':
-            pad_len = max_length - len(ids)
-            ids += [self.pad_token_id] * pad_len
-            attention_mask += [0] * pad_len
-            
-        return {
-            "input_ids": torch.tensor([ids], dtype=torch.long),
-            "attention_mask": torch.tensor([attention_mask], dtype=torch.long)
-        }
+        return self._tok(
+            text,
+            max_length=max_length,
+            padding=padding,
+            truncation=truncation,
+            return_tensors="pt",
+            **kwargs
+        )
     
     def decode(self, ids):
-        if torch.is_tensor(ids):
-            ids = ids.tolist()
-        return "".join([chr(i - 1) if i > 0 else "" for i in ids if i < self.vocab_size - 1])
+        return self._tok.decode(ids, skip_special_tokens=True)

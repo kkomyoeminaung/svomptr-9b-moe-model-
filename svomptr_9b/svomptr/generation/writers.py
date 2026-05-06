@@ -6,9 +6,18 @@ import os
 class DocWriter:
     @staticmethod
     def write_pdf(path, text):
-        c = canvas.Canvas(path)
-        c.drawString(100, 750, text)
-        c.save()
+        """Writes multi-line PDF using reportlab Paragraph"""
+        from reportlab.lib.pagesizes import letter
+        from reportlab.platypus import SimpleDocTemplate, Paragraph
+        from reportlab.lib.styles import getSampleStyleSheet
+        
+        doc = SimpleDocTemplate(path, pagesize=letter)
+        styles = getSampleStyleSheet()
+        style = styles["Normal"]
+        
+        # Simple line break handling
+        p = Paragraph(text.replace('\n', '<br/>'), style)
+        doc.build([p])
 
     @staticmethod
     def write_docx(path, text):

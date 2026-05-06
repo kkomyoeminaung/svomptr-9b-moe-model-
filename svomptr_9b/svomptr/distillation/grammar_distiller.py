@@ -61,6 +61,8 @@ class GrammarDistiller:
                     generated.append({"en": "He works hard effectively.", "my": "သူ ကြိုးကြိုးစားစား အလုပ်လုပ်တယ်။"})
                 elif "Past" in t:
                     generated.append({"en": "He worked hard yesterday.", "my": "သူ မနေ့က ကြိုးကြိုးစားစား အလုပ်လုပ်ခဲ့တယ်။"})
+                elif "Future" in t:
+                    generated.append({"en": "He will work hard tomorrow.", "my": "သူ မနက်ဖြန် ကြိုးကြိုးစားစား အလုပ်လုပ်ပါမယ်။"})
         
         elif component == "voice":
             # Active/Passive pairs
@@ -74,7 +76,7 @@ class GrammarDistiller:
         elif component == "reported_speech":
             generated.append({"en": "He said that he was happy.", "my": "သူက သူပျော်နေတယ်လို့ ပြောခဲ့တယ်။"})
 
-        elif component == "myanmar_particles":
+        elif component == "myanmar_grammar":
             particles = rules.get("particles", ["-တယ်", "-နေတယ်", "-ခဲ့တယ်"])
             for i, p in enumerate(particles[:count]):
                 if i == 0:
@@ -82,12 +84,93 @@ class GrammarDistiller:
                 else:
                     generated.append({"en": f"Sample using particle {p}", "my": f"နမူနာ စာကြောင်း ({p}) သုံးထားသည်။"})
         
-        # Fallback to smart synthesis for all 36 components
+        elif component == "conjunctions":
+            pairs = [
+                ("She studied hard, so she passed.", "သူမ ကြိုးစားလုပ်ခဲ့တာကြောင့် အောင်ခဲ့တယ်။"),
+                ("He is tired but he continues.", "သူ ပင်ပန်းနေသော်လည်း ဆက်လုပ်နေသည်။"),
+                ("Either you come or I'll go.", "မင်းလာ ဒါမှမဟုတ် ကျွန်တော်သွားမည်။"),
+            ]
+            for en, my in pairs[:count]:
+                generated.append({"en": en, "my": my})
+                
+        elif component == "negation":
+            generated.append({"en": "I do not understand.", "my": "ကျွန်တော် နားမလည်ပါဘူး။"})
+            generated.append({"en": "She never eats meat.", "my": "သူမ အသား ဘယ်တော့မှ မစားပါ။"})
+
+        elif component == "prepositions":
+            generated.append({"en": "The book is on the table.", "my": "စာအုပ်က စားပွဲပေါ်မှာ ရှိတယ်။"})
+            generated.append({"en": "He went to the market.", "my": "သူ ဈေးကို သွားခဲ့တယ်။"})
+
+        elif component == "honorifics":
+            generated.append({"en": "Please sit down.", "my": "ကျေးဇူးပြု၍ ထိုင်ပါ။"})
+            generated.append({"en": "I am coming, teacher.", "my": "ကျွန်တော် လာနေပါတယ် ဆရာ။"})
+
+        elif component == "verb_suffixes":
+            generated.append({"en": "He is running.", "my": "သူ ပြေးနေတယ်။"})
+            generated.append({"en": "I have finished.", "my": "ကျွန်တော် ပြီးသွားပြီ။"})
+
+        elif component == "noun_markers":
+            generated.append({"en": "The boy and the girl.", "my": "ကောင်လေးနှင့် ကောင်မလေး။"})
+            generated.append({"en": "My house.", "my": "ကျွန်တော့်အိမ်။"})
+
+        elif component == "relative_clauses":
+            generated.append({"en": "The man who is standing there.", "my": "ဟိုမှာ ရပ်နေတဲ့ လူ။"})
+            generated.append({"en": "The book that I read.", "my": "ကျွန်တော် ဖတ်ခဲ့တဲ့ စာအုပ်။"})
+
+        elif component == "relative_clauses":
+            generated.append({"en": "The man who is standing there.", "my": "ဟိုမှာ ရပ်နေတဲ့ လူ။"})
+            generated.append({"en": "The book that I read.", "my": "ကျွန်တော် ဖတ်ခဲ့တဲ့ စာအုပ်။"})
+
+        elif component == "modal_verbs":
+            generated.append({"en": "I can do it.", "my": "ကျွန်တော် လုပ်နိုင်တယ်။"})
+            generated.append({"en": "You must go.", "my": "မင်း သွားရမယ်။"})
+
+        elif component == "comparative_degree":
+            generated.append({"en": "He is taller than me.", "my": "သူက ကျွန်တော့်ထက် ပိုမြင့်တယ်။"})
+            generated.append({"en": "This is better.", "my": "ဒါက ပိုကောင်းတယ်။"})
+
+        elif component == "superlative":
+            generated.append({"en": "She is the most beautiful.", "my": "သူမက အလှဆုံးပါ။"})
+            generated.append({"en": "The biggest house.", "my": "အကြီးဆုံးအိမ်။"})
+
+        elif component == "modal_verbs":
+            generated.append({"en": "I can do it.", "my": "ကျွန်တော် လုပ်နိုင်ပါတယ်။"})
+            generated.append({"en": "You should go.", "my": "မင်း သွားသင့်တယ်။"})
+
+        elif component == "negation":
+            generated.append({"en": "I do not know.", "my": "ကျွန်တော် မသိဘူး။"})
+            generated.append({"en": "It is not raining.", "my": "မိုးမရွာနေဘူး။"})
+
+        elif component == "demonstratives":
+            generated.append({"en": "This cat is cute.", "my": "ဒီကြောင်က ချစ်စရာကောင်းတယ်။"})
+            generated.append({"en": "That house is big.", "my": "ဟိုအိမ်က ကြီးတယ်။"})
+
+        elif component == "idiomatic_expressions":
+            generated.append({"en": "It is raining cats and dogs.", "my": "မိုးတွေ သည်းကြီးမည်းကြီး ရွာနေတယ်။"})
+            generated.append({"en": "Break a leg.", "my": "ကံကောင်းပါစေ။"})
+
+        elif component == "interjections":
+            generated.append({"en": "Wow, this is amazing!", "my": "ဝိုး ဒါက အံ့သြစရာပဲ!"})
+            generated.append({"en": "Ouch, it hurts.", "my": "အမလေး နာလိုက်တာ။"})
+
+        elif component == "gerunds":
+            generated.append({"en": "Swimming is good for health.", "my": "ရေကူးခြင်းက ကျန်းမာရေးအတွက် ကောင်းတယ်။"})
+            generated.append({"en": "I like reading.", "my": "ကျွန်တော် စာဖတ်ရတာကို နှစ်သက်တယ်။"})
+
+        elif component == "infinitives":
+            generated.append({"en": "I want to go.", "my": "ကျွန်တော် သွားချင်တယ်။"})
+            generated.append({"en": "She came to see you.", "my": "သူမ မင်းကို တွေ့ဖို့ လာခဲ့တယ်။"})
+
+        elif component == "participles":
+            generated.append({"en": "The crying baby.", "my": "ငိုနေတဲ့ကလေး။"})
+            generated.append({"en": "A broken heart.", "my": "ကွဲအက်နေသော နှလုံးသား။"})
+
+        # Fallback to smart synthesis for the rest of the 36 components
         if not generated:
             for i in range(count):
                 generated.append({
-                    "en": f"Synthesized pattern for {component} index {i}", 
-                    "my": f"{component} အတွက် သင်ကြားရေး နမူနာ ({i})",
+                    "en": f"The example {i} shows proper usage of {component}.", 
+                    "my": f"နမူနာ ({i}) က {component} ကို မှန်ကန်စွာ အသုံးပြုထားသည်။",
                     "synthetic": True,
                     "component": component
                 })

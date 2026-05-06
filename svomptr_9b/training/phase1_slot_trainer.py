@@ -16,13 +16,13 @@ class Phase1SlotTrainer(BaseTrainer):
         self.model.train()
         pbar = tqdm(self.train_loader, desc="Phase 1 - Training")
         for batch in pbar:
-            inputs, target_slots = batch['input_ids'].to(self.device), batch['slots'].to(self.device)
-            
             self.optimizer.zero_grad()
-            _, _, slot_logits = self.model(inputs, return_slots=True)
-            
-            loss = self.criterion(slot_logits.view(-1, 7), target_slots.view(-1))
+            loss = self.train_step(batch)
             loss.backward()
             self.optimizer.step()
-            
             pbar.set_postfix({"loss": loss.item()})
+
+    def train_step(self, batch):
+        inputs, target_slots = batch['input_ids'].to(self.device), batch['slots'].to(self.device)
+        _, _, slot_logits = self.model(inputs, return_slots=True)
+        return self.criterion(slot_logits.view(-1, 7), target_slots.view(-1))

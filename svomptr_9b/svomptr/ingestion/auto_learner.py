@@ -1,5 +1,4 @@
 # svomptr/ingestion/auto_learner.py
-from duckduckgo_search import DDGS
 from tqdm import tqdm
 from .loaders import FileLoader
 from ..memory.long_term import LongTermMemory
@@ -9,7 +8,12 @@ import json
 class AutoLearner:
     def __init__(self, drive_base_path=None, memory=None):
         self.memory = memory if memory else LongTermMemory()
-        self.ddgs = DDGS()
+        try:
+            from duckduckgo_search import DDGS
+            self.ddgs = DDGS()
+        except ImportError:
+            self.ddgs = None
+            print("⚠️ duckduckgo_search not installed. Web learning disabled.")
         
         # Bug #25 Fix: Cross-platform brain path
         if drive_base_path is None:
@@ -63,6 +67,10 @@ class AutoLearner:
             print(f"➕ Added subject: {subject}")
 
     def learn_from_subject(self, subject):
+        if not self.ddgs:
+            print(f"⚠️ Search disabled. Cannot learn about {subject}")
+            return
+
         prog = self._load_progress()
         if subject in prog["completed"]:
             print(f"⏩ Skipping {subject} (Already learned)")
@@ -74,7 +82,7 @@ class AutoLearner:
             url = res['href']
             try:
                 text = FileLoader.load_html(url)
-                self.memory.add_memory(text[:5000])
+                self.memory.store_memory(text[:5000])
                 print(f"✅ Learned from: {url}")
             except Exception as e:
                 print(f"❌ Failed {url}: {e}")
@@ -100,7 +108,7 @@ class AutoLearner:
                 else:
                     continue
                 
-                self.memory.add_memory(text)
+                self.memory.store_memory(text)
                 print(f"✅ Ingested: {filename}")
                 # Move to processed or delete
                 os.remove(path)

@@ -66,6 +66,21 @@ class DataBuilder:
         if force_rebuild:
             print("♻️  FORCE_REBUILD enabled. Overwriting existing data...")
 
+        # Bug #22 fix: Seed minimal data if everything is empty
+        if not self.raw_data.get("slot_data") and not self.raw_data.get("unlabeled_data"):
+            print("💡 No raw data seeds found. Injecting minimal synthetic seed data...")
+            self.raw_data["unlabeled_data"] = [
+                {"text": "The cat sat on the mat."},
+                {"text": "Artificial Intelligence is transforming the world."},
+                {"text": "Myanmar language has beautiful structural nuances."}
+            ]
+            self.raw_data["causal_data"] = [
+                {"input": "Start: I am here.", "output": "Reasoning: Presence established."}
+            ]
+            self.raw_data["slot_data"] = [
+                {"input": "He runs.", "target": "S:He, V:runs"}
+            ]
+
         # Add special cases for grammar logic
         self.add_virtual_subject_training_data()
         
@@ -77,19 +92,28 @@ class DataBuilder:
             print(f"📦 Integrating real Distilled Data from Step 1: {distilled_path}")
             try:
                 with open(distilled_path, "r", encoding="utf-8") as f:
-                    # Distilled data is often JSONL or list
-                    lines = f.readlines()
-                    for line in lines:
-                        try:
-                            item = json.loads(line)
-                            # Convert distilled format to training format
+                    content = f.read().strip()
+                
+                if content.startswith('{') or content.startswith('['):
+                    # Standard JSON format
+                    raw_json = json.loads(content)
+                    if isinstance(raw_json, dict):
+                        for key in ['slot_data', 'chat_data', 'unlabeled_data', 'causal_data']:
+                            if key in raw_json:
+                                self.raw_data.setdefault(key, []).extend(raw_json[key])
+                    elif isinstance(raw_json, list):
+                        for item in raw_json:
                             if "en" in item and "my" in item:
-                                if "slot_data" not in self.raw_data: self.raw_data["slot_data"] = []
-                                self.raw_data["slot_data"].append({"input": item["en"], "target": f"S:{item.get('component', 'unknown')}"})
-                                
-                                if "chat_data" not in self.raw_data: self.raw_data["chat_data"] = []
-                                self.raw_data["chat_data"].append({"instruction": f"Translate and analyze: {item['en']}", "input": "", "output": f"Burmese: {item['my']}\nComponent: {item.get('component', 'N/A')}"})
-                        except: pass
+                                self.raw_data.setdefault("slot_data", []).append({"input": item["en"], "target": f"S:{item.get('component', 'unknown')}"})
+                                self.raw_data.setdefault("chat_data", []).append({"instruction": f"Translate and analyze: {item['en']}", "input": "", "output": f"Burmese: {item['my']}\nComponent: {item.get('component', 'N/A')}"})
+                else:
+                    # JSONL format
+                    for line in content.split('\n'):
+                        if line.strip():
+                            item = json.loads(line)
+                            if "en" in item and "my" in item:
+                                self.raw_data.setdefault("slot_data", []).append({"input": item["en"], "target": f"S:{item.get('component', 'unknown')}"})
+                                self.raw_data.setdefault("chat_data", []).append({"instruction": f"Translate and analyze: {item['en']}", "input": "", "output": f"Burmese: {item['my']}\nComponent: {item.get('component', 'N/A')}"})
             except Exception as e:
                 print(f"⚠️ Error merging distilled data: {e}")
 

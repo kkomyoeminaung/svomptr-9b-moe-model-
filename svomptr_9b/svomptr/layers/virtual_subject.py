@@ -5,6 +5,7 @@ Based on Myo Min Aung's specification
 
 import torch
 import torch.nn as nn
+import math
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
@@ -213,7 +214,12 @@ class VirtualSubjectEmbedding(nn.Module):
             emb = torch.zeros(1, 1, self.hidden_dim)
         
         # Add position information
-        pos_encoding = torch.sin(torch.tensor(position / 10000.0))
-        emb = emb + pos_encoding
+        pos = position
+        d = self.hidden_dim
+        pe = torch.zeros(d, device=emb.device)
+        div_term = torch.exp(torch.arange(0, d, 2, device=emb.device) * -(math.log(10000.0) / d))
+        pe[0::2] = torch.sin(pos * div_term)
+        pe[1::2] = torch.cos(pos * div_term[:d//2])
+        emb = emb + pe.view(1, 1, -1)
         
         return emb

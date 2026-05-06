@@ -28,5 +28,23 @@ class Phase3CausalTrainer(BaseTrainer):
             pbar.set_postfix({"loss": loss.item()})
             
     def _get_contrastive_logits(self, batch):
-        # Implementation for gathering pos/neg logits
-        return torch.tensor([1.0]), torch.tensor([0.5])
+        pos_ids = batch['input_ids'].to(self.device)
+        # Positive: real sequence
+        pos_outputs = self.model(pos_ids)
+        # Assuming model returns (logits, ...) or just logits, 
+        # based on typical transformer, need to be careful.
+        # Looking at original stub: it just needed logits.
+        # Re-using the implementation from the repair report.
+        if isinstance(pos_outputs, tuple): pos_logits = pos_outputs[0]
+        else: pos_logits = pos_outputs
+        
+        pos_score = pos_logits[:, -1, :].max(dim=-1).values.mean()
+        
+        # Negative: shuffled sequence
+        neg_ids = pos_ids[torch.randperm(pos_ids.size(0))]
+        neg_outputs = self.model(neg_ids)
+        if isinstance(neg_outputs, tuple): neg_logits = neg_outputs[0]
+        else: neg_logits = neg_outputs
+            
+        neg_score = neg_logits[:, -1, :].max(dim=-1).values.mean()
+        return pos_score, neg_score

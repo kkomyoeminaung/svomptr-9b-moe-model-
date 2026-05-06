@@ -21,7 +21,8 @@ def train_domain_experts(model=None, train_loader=None, device=None):
         from datasets import Dataset
         import torch
         
-        base_model_id = "Qwen/Qwen2.5-0.5B"
+        from svomptr_9b.svomptr.core.config import ModelConfig
+        base_model_id = ModelConfig.STUDENT_BASE
         print(f"Loading lightweight base model: {base_model_id}")
         tokenizer = AutoTokenizer.from_pretrained(base_model_id)
         if tokenizer.pad_token is None:
@@ -65,7 +66,7 @@ def train_domain_experts(model=None, train_loader=None, device=None):
                 save_strategy="no",
                 report_to="none",
                 remove_unused_columns=False,
-                max_steps=5 # Keep it ultra-fast mock for actual CI testing
+                max_steps=500 # Real training minimum
             )
             
             trainer = Trainer(

@@ -28,15 +28,21 @@ class Dreamer:
         if len(memories) < 2: return
 
         print(f"🤔 Analyzing {len(memories)} memories for consistency...")
-        # Simulation of contradiction detection
-        for i in range(len(memories)):
-            for j in range(i + 1, len(memories)):
-                # Heuristic: LLM analysis would detect inconsistency
-                is_contradictory = False # Placeholder
-                if is_contradictory:
-                    print(f"⚠️ Contradiction found between memory {i} and {j}. Flagged for review.")
-                    # Flagging logic: self.memory.flag_memory(i, j)
-        
+        # Avoid O(N^2) by using Faiss similarity from memory
+        if hasattr(self.memory, 'index') and self.memory.index is not None:
+            print("🚀 Using FAISS for efficient contradiction detection...")
+            for i, mem in enumerate(memories[:10]):  # process a sample
+                # Search for similar semantic memories
+                results = self.memory.search(mem, top_k=3)
+                for res in results:
+                    if res != mem:
+                         # Heuristic: LLM analysis would detect inconsistency
+                         is_contradictory = False # Placeholder
+                         if is_contradictory:
+                             print(f"⚠️ Contradiction flagged: '{mem}' vs '{res}'")
+        else:
+             print("⚠️ FAISS index not ready, skipping reflection.")
+
         print("✅ Reflection complete.")
 
     def _explore_new_knowledge(self):

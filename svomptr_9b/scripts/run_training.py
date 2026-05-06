@@ -9,10 +9,9 @@ from svomptr_9b.svomptr.core.model_9b import SVOMPTR9B
 from svomptr_9b.svomptr.core.config import ModelConfig
 from svomptr_9b.training.data_builder import DataBuilder
 from svomptr_9b.training.phase1_slot_trainer import Phase1SlotTrainer
-# Ensure other trainers are imported as they are needed
-# from svomptr_9b.training.phase2_mlm_trainer import Phase2MLMTrainer
-# from svomptr_9b.training.phase3_causal_trainer import Phase3CausalTrainer
-# from svomptr_9b.training.phase4_conversation_trainer import Phase4ConversationTrainer
+from svomptr_9b.training.phase2_mlm_trainer import Phase2MLMTrainer
+from svomptr_9b.training.phase3_causal_trainer import Phase3CausalTrainer
+from svomptr_9b.training.phase4_conversation_trainer import Phase4ConversationTrainer
 
 def run():
     parser = argparse.ArgumentParser()
@@ -79,23 +78,30 @@ def run():
         builder.build()
         
     print(f"📊 Loading Phase 1 data: {phase1_data}")
-    train_ds = SVOMPTRDataset(phase1_data, tokenizer)
-    if len(train_ds) == 0:
+    full_ds = SVOMPTRDataset(phase1_data, tokenizer)
+    if len(full_ds) == 0:
         print("💡 Generating emergency training samples (In-Memory) to prevent Step 3 failure...")
-        # Step 1 logic ensures the file exists, but we handle empty files gracefully
-        train_ds.samples = [{"en": "He runs.", "my": "သူ ပြေးတယ်။", "slots": [1, 2, 0, 0, 0, 0, 0]}] * 10
+        full_ds.samples = [{"en": "He runs.", "my": "သူ ပြေးတယ်။", "slots": [1, 2, 0, 0, 0, 0, 0]}] * 20
         
-    train_loader = DataLoader(train_ds, batch_size=config.batch_size if hasattr(config, 'batch_size') else 4, shuffle=True)
-    val_loader = train_loader
-    print(f"✅ Loaded {len(train_ds)} samples. Preparation Complete.")
+    # Warning #23 fix: Split dataset into 80/20 train/val
+    train_size = int(0.8 * len(full_ds))
+    val_size = len(full_ds) - train_size
+    train_ds, val_ds = torch.utils.data.random_split(full_ds, [train_size, val_size])
     
-    # 4. Strict Sequential 7-Step Pipeline
-    def verify_step(path, step_name):
+    batch_size = config.batch_size if hasattr(config, 'batch_size') else 4
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=batch_size)
+    
+    print(f"✅ Loaded {len(full_ds)} samples (Train: {len(train_ds)}, Val: {len(val_ds)}). Preparation Complete.")
+    
+    # 4. Strict Sequential 8-Step Pipeline
+
+    def verify_step(path, step_name, min_size=100):
         """Strictly validates if a step produced data on storage."""
         if not os.path.exists(path):
             print(f"❌ STOP: {step_name} FAILED. File not found: {path}")
             sys.exit(1)
-        if os.path.getsize(path) < 100: # Ensure it's not just an empty file
+        if path.endswith('.pt') and os.path.getsize(path) < min_size:
             print(f"❌ STOP: {step_name} produced invalid or empty data ({os.path.getsize(path)} bytes).")
             sys.exit(1)
         print(f"✅ STEP {step_name} VERIFIED. Moving to next step...")
@@ -121,14 +127,14 @@ def run():
     
     from svomptr_moe.train_sub_experts import train_domain_experts
     from svomptr_moe.train_router import train_router
-    from svomptr_9b.training.phase1_slot_trainer import Phase1SlotTrainer
-    from svomptr_9b.training.phase4_conversation_trainer import Phase4ConversationTrainer
     
     training_steps = [
         ("3", Phase1SlotTrainer, "Core Grammar & Slot Logic"),
-        ("4", Phase4ConversationTrainer, "Conversation & Bilingual SFT"),
-        ("5", train_domain_experts, "Grammar Sub-Experts (MoE)"),
-        ("6", train_router, "MoE Router Optimization"),
+        ("4", Phase2MLMTrainer, "MLM Pretraining"),
+        ("5", Phase3CausalTrainer, "Causal Reasoning"),
+        ("6", Phase4ConversationTrainer, "Conversation & Bilingual SFT"),
+        ("7", train_domain_experts, "Grammar Sub-Experts (MoE)"),
+        ("8", train_router, "MoE Router Optimization"),
     ]
 
     for step_num, target, desc in training_steps:
@@ -138,9 +144,15 @@ def run():
         latest_ckpt = os.path.join(checkpoint_dir, "latest.pt")
         
         # Check for existing completion to allow resuming the whole pipeline
-        if os.path.exists(latest_ckpt) and os.path.getsize(latest_ckpt) > 1000:
-            print(f"⏩ Step {step_num} already completed. Skipping.")
-            continue
+        if os.path.exists(latest_ckpt):
+            if step_num in ["7", "8"]:
+                # MoE steps write a text marker, not a large .pt file
+                if os.path.getsize(latest_ckpt) > 0:
+                    print(f"⏩ Step {step_num} already completed (Marker found). Skipping.")
+                    continue
+            elif os.path.getsize(latest_ckpt) > 1000:
+                print(f"⏩ Step {step_num} already completed. Skipping.")
+                continue
 
         if isinstance(target, type):
             # Real ML Training Loop
@@ -152,14 +164,14 @@ def run():
                 trainer.save_checkpoint(latest_ckpt)
                 if BRAIN_PATH.startswith("/content/drive"):
                     time.sleep(2) 
-            verify_step(latest_ckpt, f"Step {step_num} (Model Training)")
+            verify_step(latest_ckpt, f"Step {step_num} (Model Training)", min_size=1000)
         else:
             # Real MoE Training Logic
             target(model, train_loader, device)
-            # Save a dummy signal for step completion if it doesn't save a .pt
-            with open(latest_ckpt, "w") as f: f.write("Step Completed")
+            # Save a completion marker for non-weight producing steps
+            with open(latest_ckpt, "w") as f: f.write("Step Completed Successfully")
             time.sleep(2)
-            print(f"✅ Step {step_num} Logic Finished.")
+            verify_step(latest_ckpt, f"Step {step_num} (MoE Logic)", min_size=1)
 
     # --- STEP 7: FINALIZATION ---
     print("\n" + "✨"*5 + " PHASE C: FINALIZATION " + "✨"*5)
@@ -167,10 +179,10 @@ def run():
     torch.save(model.state_dict(), final_brain)
     
     # Final health check
-    verify_step(final_brain, "Step 7 (Brain Finalization)")
+    verify_step(final_brain, "Brain Finalization", min_size=1000)
     
     print("\n" + "🏆"*15)
-    print("ALL 7 STEPS COMPLETED. BRAIN IS READY ON DRIVE.")
+    print("ALL 8 STEPS COMPLETED. BRAIN IS READY ON DRIVE.")
     print(f"Location: {final_brain}")
     print("🏆"*15)
 

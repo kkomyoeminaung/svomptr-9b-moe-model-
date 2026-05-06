@@ -38,14 +38,16 @@ def train_chat_expert():
             dop_dir = "./svomptr_export/dop_alignment"
             os.makedirs(dop_dir, exist_ok=True)
             
-        print("Loading base model: Qwen/Qwen2.5-1.5B-Instruct")
+        from svomptr_9b.svomptr.core.config import ModelConfig
+        base_model_name = ModelConfig.STUDENT_BASE
+        print(f"Loading base model: {base_model_name}")
         model = AutoModelForCausalLM.from_pretrained(
-            "Qwen/Qwen2.5-1.5B-Instruct",
+            base_model_name,
             device_map=device_map,
             torch_dtype=torch_dtype,
             trust_remote_code=True
         )
-        tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct")
+        tokenizer = AutoTokenizer.from_pretrained(base_model_name)
         tokenizer.pad_token = tokenizer.eos_token # Fix for pad token issues
 
         if os.path.exists(data_path):

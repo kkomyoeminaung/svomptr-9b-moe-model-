@@ -1,80 +1,26 @@
-# /svomptr_9b/svomptr/distillation/vllm_generator.py
-
-import os
-import json
 import torch
-from typing import List, Dict
-
-try:
-    from vllm import LLM, SamplingParams
-    VLLM_AVAILABLE = True
-except ImportError:
-    VLLM_AVAILABLE = False
+import torch.nn as nn
 
 class VLLMGenerator:
-    """
-    High-performance Synthetic Data Generator.
-    Supports vLLM (GPU) with graceful fallback to Transformers (CPU/GPU).
-    """
-    def __init__(self, model_name: str = "Qwen/Qwen2.5-7B-Instruct", gpu_memory_utilization: float = 0.75, force_vllm: bool = False):
-        self.use_vllm = (VLLM_AVAILABLE and torch.cuda.is_available()) or force_vllm
-        self.model_name = model_name
-        
-        if self.use_vllm:
-            print(f"🚀 Initializing vLLM Engine (GPU) with: {model_name}")
-            try:
-                self.llm = LLM(
-                    model=model_name, 
-                    gpu_memory_utilization=gpu_memory_utilization,
-                    trust_remote_code=True,
-                    dtype="bfloat16" if torch.cuda.is_bf16_supported() else "float16",
-                    max_model_len=2048
-                )
-                self.sampling_params = SamplingParams(
-                    temperature=0.7,
-                    top_p=0.95,
-                    max_tokens=1024,
-                    presence_penalty=1.1
-                )
-            except Exception as e:
-                print(f"⚠️ vLLM Init Failed: {e}. Falling back to Transformers Mode.")
-                self.use_vllm = False
-        
-        if not self.use_vllm:
-            print(f"🐢 vLLM not available or no GPU found. Using Transformers mode.")
-            from transformers import pipeline
-            device = 0 if torch.cuda.is_available() else -1
-            self.pipe = pipeline(
-                "text-generation", 
-                model=model_name, 
-                device=device,
-                torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
-                trust_remote_code=True
-            )
+    def __init__(self, force_vllm=False):
+        self.use_vllm = False
+        self.llm = None
+        self.pipe = None
+        try:
+            if force_vllm:
+                from vllm import LLM
+                self.llm = LLM(model="Qwen/Qwen2.5-7B-Instruct")
+                self.use_vllm = True
+            else:
+                from transformers import pipeline as hf_pipeline
+                self.pipe = hf_pipeline("text-generation",
+                             model="Qwen/Qwen2.5-7B-Instruct",
+                             device_map="auto")
+        except Exception as e:
+            print(f"Generator init failed: {e}")
 
-    def generate_batch(self, prompts: List[str]) -> List[str]:
-        """
-        Runs batch generation for the provided grammar prompts.
-        """
+    def generate_batch(self, prompts):
         if self.use_vllm:
-            print(f"🔥 Running vLLM Batch Inference for {len(prompts)} prompts...")
-            outputs = self.llm.generate(prompts, self.sampling_params)
-            return [output.outputs[0].text for output in outputs]
+            return self.llm.generate(prompts)
         else:
-            print(f"🔄 Running Transformers Inference for {len(prompts)} prompts...")
-            results = []
-            for prompt in prompts:
-                out = self.pipe(prompt, max_new_tokens=1024, do_sample=True, temperature=0.7)
-                # Extract only the generated part
-                gen_text = out[0]['generated_text']
-                if gen_text.startswith(prompt):
-                    gen_text = gen_text[len(prompt):]
-                results.append(gen_text.strip())
-            return results
-
-    def save_raw_responses(self, responses: List[str], output_path: str):
-        """Saves raw LLM responses for debugging or manual verification."""
-        with open(output_path, "w", encoding="utf-8") as f:
-            for resp in responses:
-                f.write(json.dumps({"raw_response": resp}, ensure_ascii=False) + "\n")
-        print(f"💾 Raw responses saved to {output_path}")
+            return [res[0]['generated_text'] for res in self.pipe(prompts)]

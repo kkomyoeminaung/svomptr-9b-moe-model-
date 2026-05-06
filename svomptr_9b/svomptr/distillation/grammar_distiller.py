@@ -117,13 +117,9 @@ class GrammarDistiller:
             generated.append({"en": "The man who is standing there.", "my": "ဟိုမှာ ရပ်နေတဲ့ လူ။"})
             generated.append({"en": "The book that I read.", "my": "ကျွန်တော် ဖတ်ခဲ့တဲ့ စာအုပ်။"})
 
-        elif component == "relative_clauses":
-            generated.append({"en": "The man who is standing there.", "my": "ဟိုမှာ ရပ်နေတဲ့ လူ။"})
-            generated.append({"en": "The book that I read.", "my": "ကျွန်တော် ဖတ်ခဲ့တဲ့ စာအုပ်။"})
-
         elif component == "modal_verbs":
-            generated.append({"en": "I can do it.", "my": "ကျွန်တော် လုပ်နိုင်တယ်။"})
-            generated.append({"en": "You must go.", "my": "မင်း သွားရမယ်။"})
+            generated.append({"en": "I can do it.", "my": "ကျွန်တော် လုပ်နိုင်ပါတယ်။"})
+            generated.append({"en": "You should go.", "my": "မင်း သွားသင့်တယ်။"})
 
         elif component == "comparative_degree":
             generated.append({"en": "He is taller than me.", "my": "သူက ကျွန်တော့်ထက် ပိုမြင့်တယ်။"})
@@ -132,14 +128,6 @@ class GrammarDistiller:
         elif component == "superlative":
             generated.append({"en": "She is the most beautiful.", "my": "သူမက အလှဆုံးပါ။"})
             generated.append({"en": "The biggest house.", "my": "အကြီးဆုံးအိမ်။"})
-
-        elif component == "modal_verbs":
-            generated.append({"en": "I can do it.", "my": "ကျွန်တော် လုပ်နိုင်ပါတယ်။"})
-            generated.append({"en": "You should go.", "my": "မင်း သွားသင့်တယ်။"})
-
-        elif component == "negation":
-            generated.append({"en": "I do not know.", "my": "ကျွန်တော် မသိဘူး။"})
-            generated.append({"en": "It is not raining.", "my": "မိုးမရွာနေဘူး။"})
 
         elif component == "demonstratives":
             generated.append({"en": "This cat is cute.", "my": "ဒီကြောင်က ချစ်စရာကောင်းတယ်။"})

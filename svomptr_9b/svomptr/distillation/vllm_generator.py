@@ -20,7 +20,11 @@ class VLLMGenerator:
             print(f"Generator init failed: {e}")
 
     def generate_batch(self, prompts):
-        if self.use_vllm:
+        if self.use_vllm and self.llm:
             return self.llm.generate(prompts)
-        else:
+        elif self.pipe:
             return [res[0]['generated_text'] for res in self.pipe(prompts)]
+        else:
+            # Fallback for failed initialization
+            print("⚠️ Generator not ready. Batch generation skipped.")
+            return []

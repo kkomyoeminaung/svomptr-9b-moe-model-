@@ -117,9 +117,11 @@ def train_chat_expert():
             # Resume from checkpoint if it exists
             last_checkpoint = None
             if os.path.isdir(ckpt_dir):
-                checkpoints = [os.path.join(ckpt_dir, d) for d in os.listdir(ckpt_dir) if d.startswith("checkpoint")]
+                checkpoints = [d for d in os.listdir(ckpt_dir) if d.startswith("checkpoint")]
                 if checkpoints:
-                    last_checkpoint = max(checkpoints, key=os.path.getmtime)
+                    # Sort numerically by the number at the end of 'checkpoint-N'
+                    checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[-1]))
+                    last_checkpoint = os.path.join(ckpt_dir, checkpoints[-1])
                     print(f"Resuming training from {last_checkpoint} to prevent progress loss")
                     
             print("Starting DOP Alignment & Distillation...")

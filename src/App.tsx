@@ -36,6 +36,15 @@ export default function App() {
   const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Recognition Cleanup
+  useEffect(() => {
+    return () => {
+        if (recognitionRef.current) {
+            recognitionRef.current.stop();
+        }
+    };
+  }, []);
+
   // Sync to localstorage
   useEffect(() => { window.localStorage.setItem('svomptr_backend_mode', backendMode); }, [backendMode]);
   useEffect(() => { window.localStorage.setItem('svomptr_colab_url', colabUrl); }, [colabUrl]);

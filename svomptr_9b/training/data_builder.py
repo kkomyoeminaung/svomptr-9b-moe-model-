@@ -87,7 +87,13 @@ class DataBuilder:
         os.makedirs(self.output_dir, exist_ok=True)
         
         # Import and merge distilled samples if they exist (Integrity Check)
-        distilled_path = Path("data/raw/rules.json")
+        # Fix: Find path relative to the current project structure
+        try:
+            root_dir = Path(__file__).parent.parent.parent
+            distilled_path = root_dir / "data" / "raw" / "rules.json"
+        except:
+            distilled_path = Path("data/raw/rules.json")
+            
         if distilled_path.exists():
             print(f"📦 Integrating real Distilled Data from Step 1: {distilled_path}")
             try:
@@ -142,5 +148,17 @@ class DataBuilder:
         path = self.output_dir / filename
         with open(path, "w", encoding="utf-8") as f:
             for item in tqdm(data, desc=f"Writing {filename}"):
-                f.write(json.dumps(item, ensure_ascii=False) + "\n")
+                # Ensure unified format: {"en": ..., "target": ...}
+                if isinstance(item, dict):
+                    if "input" in item and "target" in item:
+                        unified = {"en": item["input"], "target": item["target"]}
+                    elif "en" in item and "target" in item:
+                        unified = item
+                    elif "text" in item:
+                        unified = {"text": item["text"]}
+                    else:
+                        unified = item
+                else:
+                    unified = {"text": str(item)}
+                f.write(json.dumps(unified, ensure_ascii=False) + "\n")
         print(f"✅ Created {filename} with {len(data)} samples.")

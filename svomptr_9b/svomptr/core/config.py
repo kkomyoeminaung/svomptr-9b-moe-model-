@@ -24,8 +24,8 @@ class ModelConfig:
     default_top_k: int = 50
     default_repetition_penalty: float = 1.1
     default_max_new_tokens: int = 256
-    batch_size: int = 4
-    gradient_accumulation_steps: int = 8
+    batch_size: int = 2
+    gradient_accumulation_steps: int = 16
     learning_rate: float = 3e-4
     warmup_steps: int = 2000
     weight_decay: float = 0.01

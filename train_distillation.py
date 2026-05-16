@@ -2,18 +2,13 @@
 import os
 import sys
 
-# Critical Path Injection
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, PROJECT_ROOT)
-sys.path.insert(0, os.path.join(PROJECT_ROOT, "svomptr_9b"))
+# Ensure project root is in path
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
-from svomptr_moe.train_chat_expert import train_chat_expert
-
-def main():
-    print("🧠 Starting Distillation Training Phase...")
-    # The train_chat_expert handles its own internal check for environment 
-    # and resume from checkpoints.
-    train_chat_expert()
+from svomptr_9b.scripts.distillation_pipeline import run_distillation
 
 if __name__ == "__main__":
-    main()
+    print("🌟 Starting Distillation Training Wrapper...")
+    run_distillation()

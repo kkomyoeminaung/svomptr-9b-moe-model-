@@ -37,9 +37,11 @@ class MoELayer(nn.Module):
             for e_idx in range(len(self.experts)):
                 mask = (expert_idx == e_idx)
                 if mask.any():
-                    # Process masked inputs through the specific expert
+                    # Flattened indexing for expert routing
                     expert_input = x[mask]
                     expert_output = self.experts[e_idx](expert_input)
-                    out[mask] += expert_output * expert_weight[mask]
+                    # Ensure weight is (N, 1) for broadcasting over (N, hidden)
+                    w = expert_weight[mask].view(-1, 1)
+                    out[mask] += expert_output * w
                     
         return out

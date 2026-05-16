@@ -15,8 +15,10 @@ class ChatExpert(nn.Module):
         
         import os
         if model_path is None:
-            brain_dir = os.environ.get("SVOMPTR_BRAIN_PATH", "/content/drive/MyDrive/svomptr_brain")
-            auto_train_dir = "/content/drive/MyDrive/svomptr_auto_train"
+            # Portable path resolution
+            base_dir = os.getcwd()
+            brain_dir = os.environ.get("SVOMPTR_BRAIN_PATH", os.path.join(base_dir, "svomptr_brain"))
+            auto_train_dir = os.path.join(base_dir, "svomptr_auto_train")
             
             brain_model_path = os.path.join(brain_dir, "weights", "chat_expert_final")
             auto_model_path = os.path.join(auto_train_dir, "final_lora_weights")
@@ -26,8 +28,9 @@ class ChatExpert(nn.Module):
             elif os.path.exists(auto_model_path):
                 model_path = auto_model_path
             else:
+                # Absolute fallback to student base if nothing found
                 from svomptr_9b.svomptr.core.config import ModelConfig
-                model_path = ModelConfig.STUDENT_BASE
+                model_path = getattr(ModelConfig, 'STUDENT_BASE', "Qwen/Qwen2.5-1.5B-Instruct")
 
         try:
             from transformers import pipeline

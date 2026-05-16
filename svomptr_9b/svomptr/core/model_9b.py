@@ -57,8 +57,15 @@ class SVOMPTR9B(nn.Module):
         
         # Deep Sparse MoE processing
         for block in self.blocks:
-            # Self-Attention
-            attn_out, _ = block["attention"](x, x, x)
+            # Self-Attention (support attention_mask if provided)
+            # Support for PyTorch MultiheadAttention key_padding_mask
+            key_padding_mask = None
+            if attention_mask is not None:
+                # Transformers attention_mask is (batch, seq), 1 for keep, 0 for mask
+                # PyTorch key_padding_mask is (batch, seq), False for keep, True for mask
+                key_padding_mask = (attention_mask == 0)
+                
+            attn_out, _ = block["attention"](x, x, x, key_padding_mask=key_padding_mask)
             x = block["norm1"](x + attn_out)
             
             # Sparse Expert Routing
@@ -94,17 +101,29 @@ class SVOMPTR9B(nn.Module):
 
     def chat(self, message: str, tokenizer=None) -> Dict:
         """Hybrid approach: Rules + Neural Generation"""
-        # Step 1: Structural Extraction
+        # Step 1: Structural Extraction (Rule-based)
         frame = self.rule_engine.parse(message)
         
-        # Step 2: Neural Response Generation
+        # Update Virtual Subject Context
+        self.virtual_detector.update_context(frame.S, frame.O if "There" in message else None)
+        
+        # Step 2: Neural Response Generation & Slot Prediction
+        neural_slots = None
         if tokenizer:
             tokens = tokenizer(message, return_tensors="pt").to(self.embedding.weight.device)
-            # Ensure we're using input['input_ids']
             input_ids = tokens['input_ids'] if isinstance(tokens, dict) else tokens
+            
             with torch.no_grad():
+                # Get both text and slots Neurallly
+                logits, hidden, slot_logits = self.forward(input_ids, return_slots=True)
                 generated = self.generate(input_ids)
+                
             response_text = tokenizer.decode(generated[0])
+            
+            # Extract neural slot IDs (argmax)
+            slot_ids = torch.argmax(slot_logits, dim=-1)[0].tolist()
+            SLOT_ORDER = ['S', 'V', 'O', 'M', 'P', 'T', 'R']
+            neural_slots = [SLOT_ORDER[s] for s in slot_ids if s < len(SLOT_ORDER)]
         else:
             response_text = f"Analyzed Sentence: S={frame.S}, V={frame.V}. I am ready to process the grammar."
         
@@ -115,7 +134,8 @@ class SVOMPTR9B(nn.Module):
             "Modifier": frame.M or "Detail",
             "Place": frame.P or "Loc",
             "Time": frame.T or "Time",
-            "Reason": frame.R or "Cause"
+            "Reason": frame.R or "Cause",
+            "Neural_Confidence": neural_slots[:5] if neural_slots else "Rules-Only"
         }
         
         return {"response": response_text, "frame": ui_frame}
@@ -124,3 +144,9 @@ class SVOMPTR9B(nn.Module):
     def idle(self):
         """Invoke this when no user interaction occurs."""
         self.dreamer.dream()
+
+    def clear_chat_context(self):
+        """Reset virtual subject and memory context"""
+        self.virtual_detector.clear_context()
+        self.memory.clear()
+        print("🧹 SVOMPTR Context Cleared.")

@@ -96,8 +96,8 @@ def train_chat_expert():
             training_args = TrainingArguments(
                 output_dir=ckpt_dir,
                 num_train_epochs=1, # 5M samples usually only need 1 epoch for distillation
-                per_device_train_batch_size=4,
-                gradient_accumulation_steps=8,
+                per_device_train_batch_size=2,
+                gradient_accumulation_steps=16,
                 learning_rate=1e-5,
                 save_strategy="steps",
                 save_steps=1000,

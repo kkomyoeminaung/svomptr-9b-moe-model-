@@ -2,27 +2,18 @@
 import os
 import sys
 
-# Critical Path Injection for Colab/Stand-alone run
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, PROJECT_ROOT)
-sys.path.insert(0, os.path.join(PROJECT_ROOT, "svomptr_9b"))
+# Ensure project root is in path
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
-from svomptr_9b.svomptr.distillation.pipeline import run_distillation_pipeline
-
-def main():
-    print("🚀 Starting Synthetic Data Generation Phase...")
-    # Get brain path from environment or use default
-    brain_dir = os.environ.get('SVOMPTR_BRAIN_PATH', '/content/drive/MyDrive/svomptr_brain')
-    dataset_file = os.path.join(brain_dir, 'datasets', 'synthetic_5000000.jsonl')
-    
-    # Run the pipeline with 5M samples target
-    # This will use vLLM if available and resume from checkpoints automatically
-    run_distillation_pipeline(
-        output_file=dataset_file,
-        dry_run=False,
-        use_vllm=True,
-        target_total_samples=5000000
-    )
+from svomptr_9b.training.data_builder import DataBuilder
 
 if __name__ == "__main__":
-    main()
+    print("📊 Starting Data Generation Wrapper...")
+    raw_path = os.path.join(REPO_ROOT, "svomptr_9b", "data", "raw", "rules.json")
+    out_dir = os.path.join(REPO_ROOT, "svomptr_9b", "training", "data")
+    
+    builder = DataBuilder(raw_path, out_dir)
+    builder.build()
+    print("✅ Extraction and building complete.")

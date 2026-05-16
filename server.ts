@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -327,17 +328,16 @@ async function startServer() {
 
   // Dataset Download Endpoint
   app.get("/api/download-dataset", (req, res) => {
-    const datasetPath = path.join(__dirname, "notebooks", "data", "synthetic_100k_high_quality.jsonl");
-    if (fs.existsSync(datasetPath)) {
-        res.download(datasetPath, "synthetic_100k_high_quality.jsonl");
+    // Standardize to centralized DATA_DIR/notebooks_data for portability
+    const standardPath = path.join(DATA_DIR, "synthetic_100k_high_quality.jsonl");
+    const legacyPath = path.join(__dirname, "notebooks", "data", "synthetic_100k_high_quality.jsonl");
+    
+    if (fs.existsSync(standardPath)) {
+        res.download(standardPath, "synthetic_100k_high_quality.jsonl");
+    } else if (fs.existsSync(legacyPath)) {
+        res.download(legacyPath, "synthetic_100k_high_quality.jsonl");
     } else {
-        // Try looking in default DATA_DIR too
-        const alternativePath = path.join(DATA_DIR, "synthetic_100k_high_quality.jsonl");
-        if (fs.existsSync(alternativePath)) {
-            res.download(alternativePath, "synthetic_100k_high_quality.jsonl");
-        } else {
-            res.status(404).send("Dataset file not found. Ensure the notebook has finished generating it.");
-        }
+        res.status(404).send("Dataset file not found. Ensure the notebook has finished generating it in the standard data directory.");
     }
   });
 
@@ -356,13 +356,19 @@ async function startServer() {
                 if (prev && prev.sender === 'user') {
                     let structureStr = "";
                     try {
-                        const frameObj = typeof msg.frame === 'string' ? JSON.parse(msg.frame) : msg.frame;
-                        structureStr = Object.entries(frameObj)
-                            .filter(([_, v]) => v && v !== '-')
-                            .map(([k, v]) => `${k}: ${v}`)
-                            .join(', ');
+                        if (msg.frame) {
+                            const frameObj = typeof msg.frame === 'string' ? JSON.parse(msg.frame) : msg.frame;
+                            if (frameObj && typeof frameObj === 'object') {
+                                structureStr = Object.entries(frameObj)
+                                    .filter(([_, v]) => v && v !== '-')
+                                    .map(([k, v]) => `${k}: ${v}`)
+                                    .join(', ');
+                            } else {
+                                structureStr = String(msg.frame);
+                            }
+                        }
                     } catch (e) {
-                        structureStr = String(msg.frame);
+                        structureStr = "Invalid Frame Data";
                     }
 
                     exportLines.push(JSON.stringify({

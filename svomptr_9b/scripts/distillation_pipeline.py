@@ -110,14 +110,14 @@ def run_distillation(total_epochs=5):
     data_source = "data/raw/distillation_sources.json"
     if not os.path.exists(data_source):
         print(f"💡 Seed data missing. Generating 100 synthetic training batches...")
-        train_loader = [torch.randint(0, config.vocab_size, (4, 128)) for _ in range(100)]
+        train_loader = [torch.randint(0, config.vocab_size, (2, 128)) for _ in range(100)]
     else:
         from torch.utils.data import DataLoader
         from svomptr_9b.training.dataset import SVOMPTRDataset
         from svomptr_9b.svomptr.core.tokenizer import RuleTokenizer
         tok = RuleTokenizer(vocab_size=config.vocab_size)
         ds = SVOMPTRDataset(data_source, tok)
-        train_loader = DataLoader(ds, batch_size=4, shuffle=True)
+        train_loader = DataLoader(ds, batch_size=2, shuffle=True)
     
     print(f"📊 Training Queue: {len(train_loader)} batches per epoch.")
 

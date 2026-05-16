@@ -159,10 +159,29 @@ class SVOMPTRRuleEngine:
                 return True
         return False
     
+    def _improve_tokenization(self, text: str) -> List[str]:
+        """Specialized tokenization for Myanmar/English mix."""
+        import re
+        # Heuristic: Add space around Myanmar markers if they stick to words
+        for marker in self.sub_markers + self.obj_markers + self.verb_endings:
+            if marker in text:
+                text = text.replace(marker, f" {marker} ")
+        
+        # 2. Extract tokens and filter empty
+        tokens = [t for t in re.split(r'(\s+)', text) if t.strip()]
+        return tokens
+
     def parse(self, sentence: str) -> SVOMPTRFrame:
         """Complete parse with all rules applied"""
         
-        tokens = sentence.strip().split()
+        # Check if text contains Myanmar characters (Unicode range U+1000–U+109F)
+        has_myanmar = any('\u1000' <= c <= '\u109f' for c in sentence)
+        
+        if has_myanmar:
+            tokens = self._improve_tokenization(sentence)
+        else:
+            tokens = sentence.strip().split()
+            
         frame = SVOMPTRFrame(raw_text=sentence, tokens=tokens)
         
         if not tokens:

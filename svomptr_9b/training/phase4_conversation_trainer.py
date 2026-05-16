@@ -10,7 +10,7 @@ class Phase4ConversationTrainer(BaseTrainer):
     
     def __init__(self, model, train_loader, val_loader, config):
         super().__init__(model, train_loader, val_loader, config)
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss(ignore_index=-100)
         
     def train_epoch(self):
         self.model.train()
